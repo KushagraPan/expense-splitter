@@ -15,7 +15,7 @@ function getGroupIdFromHash(): string | null {
 export function App() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(() => getGroupIdFromHash());
 
-  // Synchronize hash with selected group ID
+  // Synchronize browser URL hash with selected group ID
   useEffect(() => {
     function handleHashChange() {
       setSelectedGroupId(getGroupIdFromHash());
@@ -40,20 +40,48 @@ export function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1
-          className="app-title"
-          onClick={handleBackToDashboard}
-          style={{ cursor: 'pointer' }}
-          title="Return to Group Dashboard"
-        >
-          Expense Splitter
-        </h1>
-        <p className="app-subtitle">
-          Shared expense management for groups and trips
-        </p>
+        <div className="brand-bar">
+          <div
+            className="brand-logo-title"
+            onClick={handleBackToDashboard}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleBackToDashboard();
+              }
+            }}
+            title="Return to Your Groups"
+            aria-label="Expense Splitter - Return to Your Groups"
+          >
+            <div className="brand-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="3" />
+                <line x1="2" y1="10" x2="22" y2="10" />
+                <path d="M6 15h2" />
+                <path d="M14 15h4" />
+              </svg>
+            </div>
+            <div className="brand-text">
+              <h1 className="app-title">Expense Splitter</h1>
+              <p className="app-subtitle">Split expenses. See who owes whom. Settle up.</p>
+            </div>
+          </div>
+          {selectedGroupId && (
+            <button
+              type="button"
+              className="btn-ghost nav-back-btn"
+              onClick={handleBackToDashboard}
+              aria-label="Back to all groups"
+            >
+              ← All groups
+            </button>
+          )}
+        </div>
       </header>
 
-      <main>
+      <main className="app-main" id="main-content">
         {selectedGroupId ? (
           <GroupDetail
             groupId={selectedGroupId}
@@ -62,15 +90,13 @@ export function App() {
         ) : (
           <GroupDashboard onSelectGroup={handleSelectGroup} />
         )}
-
-        <aside className="architecture-note">
-          <strong>Architecture Invariant (Issue #12 Active):</strong>
-          <br />
-          <code>UI (GroupDashboard / GroupDetail)</code> ➔ <code>apiService (src/services/api.ts)</code> ➔ <code>FastAPI REST Backend (/api)</code>
-          <br />
-          Navigation is lightweight and state-driven with browser hash sync (no heavy routing library overhead).
-        </aside>
       </main>
+
+      <footer className="app-footer">
+        <p className="footer-text">
+          Expense Splitter • Simple, transparent shared expense tracking for groups
+        </p>
+      </footer>
     </div>
   );
 }
