@@ -1,7 +1,12 @@
 """FastAPI Router implementing the canonical OpenAPI 3.1 contract."""
 
-from fastapi import APIRouter, Path, status
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, Path, status
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.repository import SqlAlchemyRepository
 from app.schemas import (
     CreateExpenseRequest,
     CreateGroupRequest,
@@ -15,9 +20,18 @@ from app.schemas import (
     SettlementSuggestion,
     UpdateExpenseRequest,
 )
-from app.store import store
 
 router = APIRouter()
+
+
+def get_repository(db: Annotated[Session, Depends(get_db)]) -> SqlAlchemyRepository:
+    return SqlAlchemyRepository(db)
+
+
+RepoDep = Annotated[SqlAlchemyRepository, Depends(get_repository)]
+GroupId = Annotated[str, Path(description="Unique identifier of the group")]
+MemberId = Annotated[str, Path(description="Unique identifier of the member")]
+ExpenseId = Annotated[str, Path(description="Unique identifier of the expense")]
 
 
 # ------------------------------------------------------------------------------
@@ -30,8 +44,10 @@ router = APIRouter()
     summary="List all groups",
     operation_id="listGroups",
 )
-async def list_groups() -> list[Group]:
-    return store.list_groups()
+async def list_groups(
+    repo: RepoDep,
+) -> list[Group]:
+    return repo.list_groups()
 
 
 @router.post(
@@ -42,8 +58,11 @@ async def list_groups() -> list[Group]:
     summary="Create a new group",
     operation_id="createGroup",
 )
-async def create_group(request: CreateGroupRequest) -> Group:
-    return store.create_group(request)
+async def create_group(
+    request: CreateGroupRequest,
+    repo: RepoDep,
+) -> Group:
+    return repo.create_group(request)
 
 
 @router.get(
@@ -54,9 +73,10 @@ async def create_group(request: CreateGroupRequest) -> Group:
     operation_id="getGroup",
 )
 async def get_group(
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> Group:
-    return store.get_group(id)
+    return repo.get_group(id)
 
 
 @router.post(
@@ -67,9 +87,10 @@ async def get_group(
     operation_id="archiveGroup",
 )
 async def archive_group(
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> Group:
-    return store.archive_group(id)
+    return repo.archive_group(id)
 
 
 @router.post(
@@ -80,9 +101,10 @@ async def archive_group(
     operation_id="reopenGroup",
 )
 async def reopen_group(
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> Group:
-    return store.reopen_group(id)
+    return repo.reopen_group(id)
 
 
 # ------------------------------------------------------------------------------
@@ -96,9 +118,10 @@ async def reopen_group(
     operation_id="listMembers",
 )
 async def list_members(
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> list[Member]:
-    return store.list_members(id)
+    return repo.list_members(id)
 
 
 @router.post(
@@ -111,9 +134,10 @@ async def list_members(
 )
 async def add_member(
     request: CreateMemberRequest,
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> Member:
-    return store.add_member(id, request)
+    return repo.add_member(id, request)
 
 
 @router.delete(
@@ -124,10 +148,11 @@ async def add_member(
     operation_id="deleteMember",
 )
 async def delete_member(
-    id: str = Path(..., description="Unique identifier of the group"),
-    member_id: str = Path(..., description="Unique identifier of the member"),
+    id: GroupId,
+    member_id: MemberId,
+    repo: RepoDep,
 ) -> None:
-    store.delete_member(id, member_id)
+    repo.delete_member(id, member_id)
 
 
 # ------------------------------------------------------------------------------
@@ -141,9 +166,10 @@ async def delete_member(
     operation_id="listExpenses",
 )
 async def list_expenses(
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> list[Expense]:
-    return store.list_expenses(id)
+    return repo.list_expenses(id)
 
 
 @router.post(
@@ -156,9 +182,10 @@ async def list_expenses(
 )
 async def create_expense(
     request: CreateExpenseRequest,
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> Expense:
-    return store.create_expense(id, request)
+    return repo.create_expense(id, request)
 
 
 @router.get(
@@ -169,10 +196,11 @@ async def create_expense(
     operation_id="getExpense",
 )
 async def get_expense(
-    id: str = Path(..., description="Unique identifier of the group"),
-    expense_id: str = Path(..., description="Unique identifier of the expense"),
+    id: GroupId,
+    expense_id: ExpenseId,
+    repo: RepoDep,
 ) -> Expense:
-    return store.get_expense(id, expense_id)
+    return repo.get_expense(id, expense_id)
 
 
 @router.put(
@@ -184,10 +212,11 @@ async def get_expense(
 )
 async def update_expense(
     request: UpdateExpenseRequest,
-    id: str = Path(..., description="Unique identifier of the group"),
-    expense_id: str = Path(..., description="Unique identifier of the expense"),
+    id: GroupId,
+    expense_id: ExpenseId,
+    repo: RepoDep,
 ) -> Expense:
-    return store.update_expense(id, expense_id, request)
+    return repo.update_expense(id, expense_id, request)
 
 
 @router.delete(
@@ -198,10 +227,11 @@ async def update_expense(
     operation_id="deleteExpense",
 )
 async def delete_expense(
-    id: str = Path(..., description="Unique identifier of the group"),
-    expense_id: str = Path(..., description="Unique identifier of the expense"),
+    id: GroupId,
+    expense_id: ExpenseId,
+    repo: RepoDep,
 ) -> None:
-    store.delete_expense(id, expense_id)
+    repo.delete_expense(id, expense_id)
 
 
 # ------------------------------------------------------------------------------
@@ -215,9 +245,10 @@ async def delete_expense(
     operation_id="listPayments",
 )
 async def list_payments(
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> list[Payment]:
-    return store.list_payments(id)
+    return repo.list_payments(id)
 
 
 @router.post(
@@ -230,9 +261,10 @@ async def list_payments(
 )
 async def record_payment(
     request: CreatePaymentRequest,
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> Payment:
-    return store.record_payment(id, request)
+    return repo.record_payment(id, request)
 
 
 # ------------------------------------------------------------------------------
@@ -246,9 +278,10 @@ async def record_payment(
     operation_id="getNetBalances",
 )
 async def get_net_balances(
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> list[NetBalance]:
-    return store.get_net_balances(id)
+    return repo.get_net_balances(id)
 
 
 @router.get(
@@ -259,6 +292,7 @@ async def get_net_balances(
     operation_id="getSettlementSuggestions",
 )
 async def get_settlement_suggestions(
-    id: str = Path(..., description="Unique identifier of the group"),
+    id: GroupId,
+    repo: RepoDep,
 ) -> list[SettlementSuggestion]:
-    return store.get_settlement_suggestions(id)
+    return repo.get_settlement_suggestions(id)

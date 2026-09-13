@@ -1,5 +1,8 @@
 """FastAPI Application Entrypoint for Expense Splitter."""
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +10,18 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import router as api_router
 from app.config import settings
+from app.database import SessionLocal, init_db
+from app.repository import seed_initial_data_if_empty
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    """Ensure database schema is created and seed data is populated on startup."""
+    init_db()
+    with SessionLocal() as db:
+        seed_initial_data_if_empty(db)
+    yield
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -14,6 +29,7 @@ app = FastAPI(
     description="Canonical REST API for Expense Splitter application.",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Configure CORS for local React development server
