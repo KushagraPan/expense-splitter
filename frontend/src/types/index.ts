@@ -36,10 +36,23 @@ export interface Expense {
   payer_id: string;
   split_method: SplitMethod;
   expense_date: string;
+  category?: string;
   notes?: string;
   created_at: string;
   updated_at?: string;
   shares?: ExpenseShare[];
+}
+
+export interface CreateExpenseInput {
+  title: string;
+  amount: number;
+  payer_id: string;
+  split_method: SplitMethod;
+  expense_date?: string;
+  category?: string;
+  notes?: string;
+  participants?: string[];
+  shares?: { member_id: string; owed_amount: number }[];
 }
 
 export interface Payment {

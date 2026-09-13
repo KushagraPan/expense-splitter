@@ -9,7 +9,7 @@
  * never directly accessing mockStore or HTTP fetch logic.
  */
 
-import type { Group, Member } from '../types';
+import type { Group, Member, Expense, CreateExpenseInput } from '../types/index.ts';
 import { mockStore } from './mockStore.ts';
 
 export interface ApiService {
@@ -19,6 +19,8 @@ export interface ApiService {
   getMembers(groupId: string): Promise<Member[]>;
   addMember(groupId: string, name: string): Promise<Member>;
   deleteMember(groupId: string, memberId: string): Promise<void>;
+  getExpenses(groupId: string): Promise<Expense[]>;
+  createExpense(groupId: string, input: CreateExpenseInput): Promise<Expense>;
 }
 
 /**
@@ -32,4 +34,6 @@ export const apiService: ApiService = {
   getMembers: (groupId: string) => mockStore.getMembers(groupId),
   addMember: (groupId: string, name: string) => mockStore.addMember(groupId, name),
   deleteMember: (groupId: string, memberId: string) => mockStore.deleteMember(groupId, memberId),
+  getExpenses: (groupId: string) => mockStore.getExpenses(groupId),
+  createExpense: (groupId: string, input: CreateExpenseInput) => mockStore.createExpense(groupId, input),
 };
