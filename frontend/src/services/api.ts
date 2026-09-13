@@ -9,13 +9,14 @@
  * never directly accessing mockStore or HTTP fetch logic.
  */
 
-import type { Group } from '../types';
+import type { Group, Member } from '../types';
 import { mockStore } from './mockStore';
 
 export interface ApiService {
   getGroups(): Promise<Group[]>;
   getGroup(id: string): Promise<Group | null>;
   createGroup(input: { name: string; currency: string }): Promise<Group>;
+  getMembers(groupId: string): Promise<Member[]>;
 }
 
 /**
@@ -26,4 +27,5 @@ export const apiService: ApiService = {
   getGroups: () => mockStore.getGroups(),
   getGroup: (id: string) => mockStore.getGroup(id),
   createGroup: (input) => mockStore.createGroup(input),
+  getMembers: (groupId: string) => mockStore.getMembers(groupId),
 };
