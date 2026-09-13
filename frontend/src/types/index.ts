@@ -66,6 +66,14 @@ export interface Payment {
   created_at: string;
 }
 
+export interface CreatePaymentInput {
+  payer_id: string;
+  recipient_id: string;
+  amount: number;
+  payment_date?: string;
+  notes?: string;
+}
+
 export interface NetBalance {
   member_id: string;
   member_name: string;

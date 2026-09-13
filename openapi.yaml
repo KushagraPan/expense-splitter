@@ -1,0 +1,1025 @@
+openapi: 3.1.0
+info:
+  title: Expense Splitter API
+  version: 1.0.0
+  description: |
+    Canonical REST API contract for the Expense Splitter application.
+    
+    ### Domain Rules & Invariants:
+    - **Groups & Lifecycle**: Groups operate in either `ACTIVE` or `ARCHIVED` status. An active group can only be archived when every member's net balance is exactly 0.00. Archived groups are read-only and reject all mutation operations with `403 Forbidden`. Groups can be reopened back to `ACTIVE` status. Groups are never permanently deleted.
+    - **Members**: Placeholder members belong to a group and have unique names within the group. A member can only be deleted if they have zero financial history (not a payer, participant, or payment party).
+    - **Expenses & Splits**: Single-payer expenses support `EQUAL` and `EXACT` splits with participant subsets (the payer can be excluded from participants). `EQUAL` splits distribute remaining cent(s) sequentially starting from the first participant. `EXACT` splits require the sum of participant shares to equal the expense amount exactly.
+    - **Derived Net Balances**: Net balances are calculated dynamically from active expenses and payments: `(Expenses Paid + Payments Sent) - (Expenses Owed + Payments Received)`. The global zero-sum invariant `sum(Net Balance) === 0.00` is maintained at all times.
+    - **Simplified Debt Settlement**: Debtor-creditor matching produces a simplified settlement plan using no more than `N - 1` transactions for `N` members with non-zero balances using exact integer-cent arithmetic.
+    - **Payments**: Historical cash transfer records document debt settlements. Mutating past expenses preserves historical payments, supporting debt inversion (reverse refunds).
+
+servers:
+  - url: /api
+    description: Default base path for the Expense Splitter API
+
+tags:
+  - name: Groups
+    description: Group management and lifecycle transitions (Archive / Reopen)
+  - name: Members
+    description: Member management with zero-history deletion safety
+  - name: Expenses
+    description: Expense ledger management with EQUAL and EXACT split calculations
+  - name: Payments
+    description: First-class cash transfer records for debt settlement
+  - name: Derived Calculations
+    description: Deterministic derived net balances and debt simplification suggestions
+
+paths:
+  /groups:
+    get:
+      tags:
+        - Groups
+      summary: List all groups
+      description: Retrieve all active and archived groups stored in the system.
+      operationId: listGroups
+      responses:
+        '200':
+          description: A list of groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Group'
+
+    post:
+      tags:
+        - Groups
+      summary: Create a new group
+      description: Creates a new expense group in ACTIVE status with a designated currency.
+      operationId: createGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+      responses:
+        '201':
+          description: Group created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          description: Validation error (e.g., empty group name or invalid currency)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /groups/{id}:
+    get:
+      tags:
+        - Groups
+      summary: Retrieve group details
+      description: Fetch metadata and lifecycle status for a single group by its ID.
+      operationId: getGroup
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: Group found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /groups/{id}/archive:
+    post:
+      tags:
+        - Groups
+      summary: Archive a group
+      description: |
+        Transition an active group to ARCHIVED status.
+        Precondition: Every member's net balance must be exactly 0.00.
+        If any member has an unsettled balance, the operation is blocked with 400 Bad Request.
+      operationId: archiveGroup
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: Group successfully archived and set to read-only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          description: Cannot archive group with unsettled balances
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Group is already archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /groups/{id}/reopen:
+    post:
+      tags:
+        - Groups
+      summary: Reopen an archived group
+      description: Transition an archived group back to ACTIVE status, unlocking member and expense mutations.
+      operationId: reopenGroup
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: Group successfully reopened and returned to active status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          description: Group is already active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /groups/{id}/members:
+    get:
+      tags:
+        - Members
+      summary: List group members
+      description: Retrieve all placeholder members belonging to the specified group.
+      operationId: listMembers
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: A list of members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Member'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - Members
+      summary: Add a member to a group
+      description: |
+        Add a new named placeholder member to an active group.
+        Member names must be non-empty and unique within the group (case-insensitive).
+      operationId: addMember
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMemberRequest'
+      responses:
+        '201':
+          description: Member added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+        '400':
+          description: Validation error (e.g. empty name or duplicate member name in group)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenArchived'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /groups/{id}/members/{member_id}:
+    delete:
+      tags:
+        - Members
+      summary: Delete a member from a group
+      description: |
+        Delete an unreferenced member from an active group.
+        If the member is referenced in any expense (as payer or participant) or payment (as payer or recipient),
+        deletion is rejected with 400 Bad Request to protect referential integrity.
+      operationId: deleteMember
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '204':
+          description: Member deleted successfully
+        '400':
+          description: Cannot delete member with existing financial history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenArchived'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /groups/{id}/expenses:
+    get:
+      tags:
+        - Expenses
+      summary: List group expenses
+      description: Retrieve all logged expenses for the specified group in chronological order.
+      operationId: listExpenses
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: List of expenses with individual participant shares
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Expense'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - Expenses
+      summary: Create an expense
+      description: |
+        Log a new single-payer expense in an active group.
+        Supports EQUAL split (with deterministic sequential cent remainder allocation)
+        and EXACT split (where the sum of participant shares must equal total amount).
+      operationId: createExpense
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExpenseRequest'
+      responses:
+        '201':
+          description: Expense created successfully with computed participant shares
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+        '400':
+          description: Validation error (e.g. invalid amount, participants, or share sum mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenArchived'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /groups/{id}/expenses/{expense_id}:
+    get:
+      tags:
+        - Expenses
+      summary: Retrieve an expense
+      description: Fetch full details and participant share breakdown of a single expense.
+      operationId: getExpense
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/ExpenseId'
+      responses:
+        '200':
+          description: Expense found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Expenses
+      summary: Update an expense
+      description: |
+        Modify an existing expense in an active group. All fields (title, amount, payer, participants, split method, notes)
+        can be edited. Recalculates participant shares and dynamically updates group balances.
+      operationId: updateExpense
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/ExpenseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateExpenseRequest'
+      responses:
+        '200':
+          description: Expense updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenArchived'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Expenses
+      summary: Delete an expense
+      description: |
+        Permanently delete an expense record from an active group.
+        Dynamically triggers recalculation of member net balances and settlement suggestions.
+      operationId: deleteExpense
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/ExpenseId'
+      responses:
+        '204':
+          description: Expense deleted successfully
+        '403':
+          $ref: '#/components/responses/ForbiddenArchived'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /groups/{id}/payments:
+    get:
+      tags:
+        - Payments
+      summary: List group payments
+      description: Retrieve chronological payment transactions recorded for settling debts in the group.
+      operationId: listPayments
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: List of recorded payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - Payments
+      summary: Record a settlement payment
+      description: |
+        Record a first-class payment transfer from a debtor to a creditor in an active group.
+        Enforces validation against the suggested settlement plan:
+        - Payer and recipient cannot be the same member.
+        - Payment amount must be strictly greater than zero and cannot exceed the currently suggested amount.
+        - Recipient must be an outstanding creditor in the settlement plan.
+      operationId: recordPayment
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Payment recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          description: Validation error (e.g. exceeds suggested settlement, recipient not a creditor, invalid amount)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenArchived'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /groups/{id}/balances:
+    get:
+      tags:
+        - Derived Calculations
+      summary: Retrieve derived member net balances
+      description: |
+        Compute and return real-time net balances for all members of the group.
+        Net Balance(M) = (Expenses Paid + Payments Sent) - (Expenses Owed + Payments Received).
+        Maintains global invariant: sum(all net balances) === 0.00.
+      operationId: getNetBalances
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: List of net balances for each group member
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NetBalance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /groups/{id}/settlements:
+    get:
+      tags:
+        - Derived Calculations
+      summary: Retrieve simplified settlement suggestions
+      description: |
+        Generate a simplified debt settlement plan by matching net debtors with net creditors.
+        Uses greedy debtor-creditor matching with integer cents arithmetic, producing no more than N - 1
+        transactions for N members with non-zero balances. Returns an empty array if all debts are settled.
+      operationId: getSettlementSuggestions
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: List of recommended settlement transfers (who pays whom how much)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SettlementSuggestion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    GroupId:
+      name: id
+      in: path
+      required: true
+      description: Unique identifier of the group
+      schema:
+        type: string
+      example: "grp-1789316311281-7noe"
+
+    MemberId:
+      name: member_id
+      in: path
+      required: true
+      description: Unique identifier of the member
+      schema:
+        type: string
+      example: "mem-1"
+
+    ExpenseId:
+      name: expense_id
+      in: path
+      required: true
+      description: Unique identifier of the expense
+      schema:
+        type: string
+      example: "exp-101"
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail: "Resource not found"
+
+    ForbiddenArchived:
+      description: Mutation blocked because the group is archived and read-only
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail: "Group is archived and read-only"
+
+  schemas:
+    GroupStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - ARCHIVED
+      description: Lifecycle status of the group.
+      example: "ACTIVE"
+
+    SplitMethod:
+      type: string
+      enum:
+        - EQUAL
+        - EXACT
+      description: Method used to divide the expense total among participants.
+      example: "EQUAL"
+
+    Group:
+      type: object
+      required:
+        - id
+        - name
+        - currency
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the group
+          example: "grp-1789316311281-7noe"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Display name of the group
+          example: "Goa Weekend Trip"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: "^[A-Z]{3}$"
+          description: ISO 4217 three-letter currency code
+          example: "INR"
+        status:
+          $ref: '#/components/schemas/GroupStatus'
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the group was created
+          example: "2026-09-13T12:00:00Z"
+
+    CreateGroupRequest:
+      type: object
+      required:
+        - name
+        - currency
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Display name of the group
+          example: "Goa Weekend Trip"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: "^[A-Z]{3}$"
+          default: "INR"
+          description: ISO 4217 three-letter currency code (e.g. INR, USD, EUR, GBP)
+          example: "INR"
+
+    Member:
+      type: object
+      required:
+        - id
+        - group_id
+        - name
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the member
+          example: "mem-1"
+        group_id:
+          type: string
+          description: Identifier of the group this member belongs to
+          example: "grp-1789316311281-7noe"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Name of the member (unique within group)
+          example: "Alice"
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the member was added
+          example: "2026-09-13T12:05:00Z"
+
+    CreateMemberRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Name of the member to add (must be unique within the group)
+          example: "Bob"
+
+    ExpenseShare:
+      type: object
+      required:
+        - expense_id
+        - member_id
+        - owed_amount
+      properties:
+        expense_id:
+          type: string
+          description: Identifier of the associated expense
+          example: "exp-101"
+        member_id:
+          type: string
+          description: Identifier of the member who owes this share
+          example: "mem-1"
+        owed_amount:
+          type: number
+          format: double
+          minimum: 0
+          multipleOf: 0.01
+          description: Exact monetary share owed by this participant (in group currency)
+          example: 33.34
+
+    CreateExpenseShareInput:
+      type: object
+      required:
+        - member_id
+        - owed_amount
+      properties:
+        member_id:
+          type: string
+          description: Identifier of the participating group member
+          example: "mem-1"
+        owed_amount:
+          type: number
+          format: double
+          minimum: 0
+          multipleOf: 0.01
+          description: Exact share amount assigned to this participant
+          example: 40.00
+
+    Expense:
+      type: object
+      required:
+        - id
+        - group_id
+        - title
+        - amount
+        - payer_id
+        - split_method
+        - expense_date
+        - created_at
+        - shares
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the expense
+          example: "exp-101"
+        group_id:
+          type: string
+          description: Identifier of the group
+          example: "grp-1789316311281-7noe"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Short title/description of the expense
+          example: "Resort Booking"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Total expense amount (strictly greater than zero)
+          example: 100.00
+        payer_id:
+          type: string
+          description: Member ID of the single person who paid the expense
+          example: "mem-1"
+        split_method:
+          $ref: '#/components/schemas/SplitMethod'
+        expense_date:
+          type: string
+          format: date
+          description: Date when the expense occurred (YYYY-MM-DD)
+          example: "2026-09-13"
+        category:
+          type: string
+          maxLength: 50
+          description: Optional category tag (e.g. Food, Transport, Lodging, Entertainment)
+          example: "Lodging"
+        notes:
+          type: string
+          maxLength: 255
+          description: Optional additional notes or reference details
+          example: "Standard AC room booking"
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 creation timestamp
+          example: "2026-09-13T12:10:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of last modification
+          example: "2026-09-13T12:30:00Z"
+        shares:
+          type: array
+          description: Breakdown of individual member shares for this expense
+          items:
+            $ref: '#/components/schemas/ExpenseShare'
+
+    CreateExpenseRequest:
+      type: object
+      required:
+        - title
+        - amount
+        - payer_id
+        - split_method
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Short title/description of the expense
+          example: "Dinner"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Total expense amount (must be positive)
+          example: 100.00
+        payer_id:
+          type: string
+          description: Member ID of the member who paid
+          example: "mem-1"
+        split_method:
+          $ref: '#/components/schemas/SplitMethod'
+        expense_date:
+          type: string
+          format: date
+          description: Date of expense (defaults to today if omitted)
+          example: "2026-09-13"
+        category:
+          type: string
+          maxLength: 50
+          description: Optional expense category
+          example: "Food"
+        notes:
+          type: string
+          maxLength: 255
+          description: Optional notes
+          example: "Dinner at beachside cafe"
+        participants:
+          type: array
+          items:
+            type: string
+          description: |
+            Array of member IDs participating in the split.
+            Required when split_method is EQUAL. Payer may be excluded.
+          example: ["mem-1", "mem-2", "mem-3"]
+        shares:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateExpenseShareInput'
+          description: |
+            Array of participant shares.
+            Required when split_method is EXACT. Sum of shares must equal amount exactly.
+
+    UpdateExpenseRequest:
+      type: object
+      required:
+        - title
+        - amount
+        - payer_id
+        - split_method
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Short title/description of the expense
+          example: "Dinner Buffet"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Total expense amount (must be positive)
+          example: 120.00
+        payer_id:
+          type: string
+          description: Member ID of the member who paid
+          example: "mem-1"
+        split_method:
+          $ref: '#/components/schemas/SplitMethod'
+        expense_date:
+          type: string
+          format: date
+          description: Date of expense
+          example: "2026-09-13"
+        category:
+          type: string
+          maxLength: 50
+          description: Optional expense category
+          example: "Food"
+        notes:
+          type: string
+          maxLength: 255
+          description: Optional notes
+          example: "Includes dessert"
+        participants:
+          type: array
+          items:
+            type: string
+          description: List of participating member IDs (for EQUAL splits)
+          example: ["mem-1", "mem-2", "mem-3"]
+        shares:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateExpenseShareInput'
+          description: List of exact participant shares (for EXACT splits)
+
+    Payment:
+      type: object
+      required:
+        - id
+        - group_id
+        - payer_id
+        - recipient_id
+        - amount
+        - payment_date
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the payment record
+          example: "pay-201"
+        group_id:
+          type: string
+          description: Identifier of the group
+          example: "grp-1789316311281-7noe"
+        payer_id:
+          type: string
+          description: Member ID of the person who sent money (debtor)
+          example: "mem-2"
+        recipient_id:
+          type: string
+          description: Member ID of the person who received money (creditor)
+          example: "mem-1"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Amount transferred (strictly positive)
+          example: 33.33
+        payment_date:
+          type: string
+          format: date
+          description: Date when payment occurred (YYYY-MM-DD)
+          example: "2026-09-13"
+        notes:
+          type: string
+          maxLength: 255
+          description: Optional payment reference or note
+          example: "Settlement via UPI"
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 creation timestamp
+          example: "2026-09-13T13:00:00Z"
+
+    CreatePaymentRequest:
+      type: object
+      required:
+        - payer_id
+        - recipient_id
+        - amount
+      properties:
+        payer_id:
+          type: string
+          description: Member ID of the debtor paying money
+          example: "mem-2"
+        recipient_id:
+          type: string
+          description: Member ID of the creditor receiving money
+          example: "mem-1"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Amount paid (cannot exceed currently suggested settlement amount)
+          example: 33.33
+        payment_date:
+          type: string
+          format: date
+          description: Date payment took place (defaults to today)
+          example: "2026-09-13"
+        notes:
+          type: string
+          maxLength: 255
+          description: Optional note or transaction reference
+          example: "Bank transfer ref 98765"
+
+    NetBalance:
+      type: object
+      required:
+        - member_id
+        - member_name
+        - net_balance
+      properties:
+        member_id:
+          type: string
+          description: Identifier of the group member
+          example: "mem-1"
+        member_name:
+          type: string
+          description: Display name of the member
+          example: "Alice"
+        net_balance:
+          type: number
+          format: double
+          multipleOf: 0.01
+          description: |
+            Derived net balance in group currency.
+            Formula: (Expenses Paid + Payments Sent) - (Expenses Owed + Payments Received).
+            > 0: Creditor (group owes member money)
+            < 0: Debtor (member owes group money)
+            = 0: Settled
+          example: 66.66
+        paid_amount:
+          type: number
+          format: double
+          minimum: 0
+          multipleOf: 0.01
+          description: Total sum of expenses paid by this member
+          example: 100.00
+        owed_amount:
+          type: number
+          format: double
+          minimum: 0
+          multipleOf: 0.01
+          description: Total sum of expense shares owed by this member
+          example: 33.34
+
+    SettlementSuggestion:
+      type: object
+      required:
+        - payer_id
+        - payer_name
+        - recipient_id
+        - recipient_name
+        - amount
+      properties:
+        payer_id:
+          type: string
+          description: Member ID of the debtor who should send money
+          example: "mem-2"
+        payer_name:
+          type: string
+          description: Name of the debtor
+          example: "Bob"
+        recipient_id:
+          type: string
+          description: Member ID of the creditor who should receive money
+          example: "mem-1"
+        recipient_name:
+          type: string
+          description: Name of the creditor
+          example: "Alice"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Suggested amount to transfer in group currency
+          example: 33.33
+
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Explanation of the validation or business rule failure
+          example: "Cannot archive group with unsettled balances"
+        code:
+          type: string
+          description: Optional machine-readable error classification code
+          example: "UNSETTLED_BALANCES"

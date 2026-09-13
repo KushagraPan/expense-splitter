@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiService } from '../services/api';
-import type { Group, Member, SplitMethod, Expense, NetBalance, SettlementSuggestion } from '../types';
+import type { Group, Member, SplitMethod, Expense, NetBalance, SettlementSuggestion, Payment } from '../types';
 
 interface GroupDetailProps {
   groupId: string;
@@ -13,6 +13,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [balances, setBalances] = useState<NetBalance[]>([]);
   const [settlements, setSettlements] = useState<SettlementSuggestion[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +38,24 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
   const [expenseSuccess, setExpenseSuccess] = useState<string | null>(null);
   const [expenseError, setExpenseError] = useState<string | null>(null);
 
+  // Issue #8 lifecycle state
+  const [lifecycleSuccess, setLifecycleSuccess] = useState<string | null>(null);
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+
+  // Payment Recording & Settlement state
+  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
+  const [paymentPayerId, setPaymentPayerId] = useState<string>('');
+  const [paymentRecipientId, setPaymentRecipientId] = useState<string>('');
+  const [paymentPayerName, setPaymentPayerName] = useState<string>('');
+  const [paymentRecipientName, setPaymentRecipientName] = useState<string>('');
+  const [paymentAmount, setPaymentAmount] = useState<string>('');
+  const [paymentMaxAmount, setPaymentMaxAmount] = useState<number>(0);
+  const [paymentDate, setPaymentDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [paymentNotes, setPaymentNotes] = useState<string>('');
+  const [paymentLoading, setPaymentLoading] = useState<boolean>(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     let ignore = false;
     Promise.all([
@@ -45,14 +64,16 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
       apiService.getExpenses(groupId),
       apiService.getNetBalances(groupId),
       apiService.getSettlementSuggestions(groupId),
+      apiService.getPayments(groupId),
     ])
-      .then(([groupData, membersData, expensesData, balancesData, settlementsData]) => {
+      .then(([groupData, membersData, expensesData, balancesData, settlementsData, paymentsData]) => {
         if (!ignore) {
           setGroup(groupData);
           setMembers(membersData);
           setExpenses(expensesData);
           setBalances(balancesData);
           setSettlements(settlementsData);
+          setPayments(paymentsData);
           if (membersData.length > 0) {
             setExpensePayerId((prev) => prev || membersData[0].id);
             setSelectedParticipants(membersData.map((m) => m.id));
@@ -179,6 +200,100 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     setExpenseError(null);
   };
 
+  const handleArchiveGroup = async () => {
+    setLifecycleError(null);
+    setLifecycleSuccess(null);
+    try {
+      setActionLoading(true);
+      const updated = await apiService.archiveGroup(groupId);
+      setGroup(updated);
+      setLifecycleSuccess('Group has been archived successfully and is now read-only.');
+      handleCancelExpenseForm();
+    } catch (err) {
+      setLifecycleError(err instanceof Error ? err.message : 'Failed to archive group');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReopenGroup = async () => {
+    setLifecycleError(null);
+    setLifecycleSuccess(null);
+    try {
+      setActionLoading(true);
+      const updated = await apiService.reopenGroup(groupId);
+      setGroup(updated);
+      setLifecycleSuccess('Group has been reopened successfully and editing is unlocked.');
+    } catch (err) {
+      setLifecycleError(err instanceof Error ? err.message : 'Failed to reopen group');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleOpenPaymentModal = (suggestion: SettlementSuggestion) => {
+    setPaymentError(null);
+    setPaymentSuccess(null);
+    setPaymentPayerId(suggestion.payer_id);
+    setPaymentRecipientId(suggestion.recipient_id);
+    setPaymentPayerName(suggestion.payer_name);
+    setPaymentRecipientName(suggestion.recipient_name);
+    setPaymentAmount(suggestion.amount.toFixed(2));
+    setPaymentMaxAmount(suggestion.amount);
+    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setPaymentNotes('');
+    setShowPaymentModal(true);
+  };
+
+  const handleClosePaymentModal = () => {
+    setShowPaymentModal(false);
+    setPaymentError(null);
+  };
+
+  const handleRecordPaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPaymentError(null);
+    setPaymentSuccess(null);
+
+    const parsedAmount = parseFloat(paymentAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setPaymentError('Payment amount must be greater than zero');
+      return;
+    }
+
+    if (parsedAmount > paymentMaxAmount + 0.0001) {
+      setPaymentError('Payment amount exceeds currently suggested settlement amount');
+      return;
+    }
+
+    try {
+      setPaymentLoading(true);
+      const recorded = await apiService.recordPayment(groupId, {
+        payer_id: paymentPayerId,
+        recipient_id: paymentRecipientId,
+        amount: parsedAmount,
+        payment_date: paymentDate,
+        notes: paymentNotes.trim() || undefined,
+      });
+
+      const [updatedBalances, updatedSettlements, updatedPayments] = await Promise.all([
+        apiService.getNetBalances(groupId),
+        apiService.getSettlementSuggestions(groupId),
+        apiService.getPayments(groupId),
+      ]);
+
+      setBalances(updatedBalances);
+      setSettlements(updatedSettlements);
+      setPayments(updatedPayments);
+      setShowPaymentModal(false);
+      setPaymentSuccess(`Payment of ${group?.currency} ${recorded.amount.toFixed(2)} recorded successfully.`);
+    } catch (err) {
+      setPaymentError(err instanceof Error ? err.message : 'Failed to record payment');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   const handleOpenAddExpense = () => {
     setEditingExpenseId(null);
     setExpenseTitle('');
@@ -228,12 +343,14 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         handleCancelExpenseForm();
       }
       setExpenseSuccess(`Expense "${expense.title}" deleted successfully!`);
-      const [updatedBalances, updatedSettlements] = await Promise.all([
+      const [updatedBalances, updatedSettlements, updatedPayments] = await Promise.all([
         apiService.getNetBalances(groupId),
         apiService.getSettlementSuggestions(groupId),
+        apiService.getPayments(groupId),
       ]);
       setBalances(updatedBalances);
       setSettlements(updatedSettlements);
+      setPayments(updatedPayments);
     } catch (err) {
       setExpenseError(err instanceof Error ? err.message : 'Failed to delete expense');
     } finally {
@@ -319,12 +436,14 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         }
       }
 
-      const [updatedBalances, updatedSettlements] = await Promise.all([
+      const [updatedBalances, updatedSettlements, updatedPayments] = await Promise.all([
         apiService.getNetBalances(groupId),
         apiService.getSettlementSuggestions(groupId),
+        apiService.getPayments(groupId),
       ]);
       setBalances(updatedBalances);
       setSettlements(updatedSettlements);
+      setPayments(updatedPayments);
       handleCancelExpenseForm();
     } catch (err) {
       setExpenseError(err instanceof Error ? err.message : 'Failed to save expense');
@@ -372,7 +491,31 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
 
       <header className="card detail-header">
         <div className="header-main">
-          <h2 className="group-detail-title">{group.name}</h2>
+          <div className="title-status-row">
+            <h2 className="group-detail-title">{group.name}</h2>
+            <div className="lifecycle-actions">
+              {isArchived ? (
+                <button
+                  type="button"
+                  className="btn-reopen-group"
+                  onClick={handleReopenGroup}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? 'Reopening...' : 'Reopen Group'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-archive-group"
+                  onClick={handleArchiveGroup}
+                  disabled={actionLoading}
+                  title="Archive group (requires all member balances to be 0.00)"
+                >
+                  {actionLoading ? 'Archiving...' : 'Archive Group'}
+                </button>
+              )}
+            </div>
+          </div>
           <div className="detail-meta">
             <span className="badge badge-currency">Currency: {group.currency}</span>
             <span className={`badge ${isArchived ? 'badge-archived' : 'badge-active'}`}>
@@ -383,9 +526,60 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         </div>
       </header>
 
+      {lifecycleError && (
+        <div className="error-banner" role="alert">
+          <span className="error-banner-icon">⚠</span>
+          <span className="error-banner-message">{lifecycleError}</span>
+          <button
+            type="button"
+            className="btn-dismiss-error"
+            onClick={() => setLifecycleError(null)}
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {lifecycleSuccess && (
+        <div className="success-banner" role="status">
+          <span className="success-banner-icon">✓</span>
+          <span className="success-banner-message">{lifecycleSuccess}</span>
+          <button
+            type="button"
+            className="btn-dismiss-success"
+            onClick={() => setLifecycleSuccess(null)}
+            aria-label="Dismiss success message"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {paymentSuccess && (
+        <div className="success-banner" role="status">
+          <span className="success-banner-icon">✓</span>
+          <span className="success-banner-message">{paymentSuccess}</span>
+          <button
+            type="button"
+            className="btn-dismiss-success"
+            onClick={() => setPaymentSuccess(null)}
+            aria-label="Dismiss payment message"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {isArchived && (
         <div className="alert-archived" role="note">
-          This group is archived. Member management, expense creation, and modifications are disabled.
+          <div className="alert-archived-content">
+            <span className="alert-archived-icon">🔒</span>
+            <div className="alert-archived-text">
+              <strong>This group is archived (Read-Only)</strong>
+              <p>Member management, expense creation, and modifications are disabled. All historical records, expenses, and balances remain preserved. Click "Reopen Group" to resume editing.</p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -422,54 +616,52 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                   </span>
                   <span className="member-name">{member.name}</span>
                 </div>
-                <button
-                  type="button"
-                  className="btn-delete-member"
-                  onClick={() => handleDeleteMember(member.id)}
-                  disabled={isArchived || actionLoading}
-                  title={
-                    isArchived
-                      ? 'Cannot delete member from an archived group'
-                      : `Delete ${member.name}`
-                  }
-                  aria-label={`Delete ${member.name}`}
-                >
-                  Delete
-                </button>
+                {!isArchived && (
+                  <button
+                    type="button"
+                    className="btn-delete-member"
+                    onClick={() => handleDeleteMember(member.id)}
+                    disabled={actionLoading}
+                    title={`Delete ${member.name}`}
+                    aria-label={`Delete ${member.name}`}
+                  >
+                    Delete
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         )}
 
         {/* Add Member Form */}
-        <div className="add-member-section">
-          <h4 className="subsection-title">Add Member</h4>
-          <form onSubmit={handleAddMember} className="add-member-form">
-            <div className="form-group-inline">
-              <input
-                type="text"
-                placeholder={
-                  isArchived ? 'Group is archived (adding disabled)' : 'Enter member name...'
-                }
-                value={newMemberName}
-                onChange={(e) => {
-                  setNewMemberName(e.target.value);
-                  if (actionError) setActionError(null);
-                }}
-                disabled={isArchived || actionLoading}
-                className="form-input"
-                aria-label="New member name"
-              />
-              <button
-                type="submit"
-                disabled={isArchived || actionLoading}
-                className="btn-primary"
-              >
-                {actionLoading ? 'Adding...' : 'Add Member'}
-              </button>
-            </div>
-          </form>
-        </div>
+        {!isArchived && (
+          <div className="add-member-section">
+            <h4 className="subsection-title">Add Member</h4>
+            <form onSubmit={handleAddMember} className="add-member-form">
+              <div className="form-group-inline">
+                <input
+                  type="text"
+                  placeholder="Enter member name..."
+                  value={newMemberName}
+                  onChange={(e) => {
+                    setNewMemberName(e.target.value);
+                    if (actionError) setActionError(null);
+                  }}
+                  disabled={actionLoading}
+                  className="form-input"
+                  aria-label="New member name"
+                />
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="btn-primary"
+                >
+                  {actionLoading ? 'Adding...' : 'Add Member'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </section>
 
       {/* Expense Management Section (Issues #4 & #5) */}
@@ -823,24 +1015,28 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                           >
                             {isExpanded ? 'Hide Details' : 'Details'}
                           </button>
-                          <button
-                            type="button"
-                            className="btn-secondary btn-sm"
-                            onClick={() => handleStartEditExpense(exp)}
-                            disabled={isArchived || actionLoading}
-                            title={isArchived ? 'Cannot edit expense in an archived group' : `Edit ${exp.title}`}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-delete-expense btn-sm"
-                            onClick={() => handleDeleteExpense(exp)}
-                            disabled={isArchived || actionLoading}
-                            title={isArchived ? 'Cannot delete expense from an archived group' : `Delete ${exp.title}`}
-                          >
-                            Delete
-                          </button>
+                          {!isArchived && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn-secondary btn-sm"
+                                onClick={() => handleStartEditExpense(exp)}
+                                disabled={actionLoading}
+                                title={`Edit ${exp.title}`}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-delete-expense btn-sm"
+                                onClick={() => handleDeleteExpense(exp)}
+                                disabled={actionLoading}
+                                title={`Delete ${exp.title}`}
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -986,10 +1182,22 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                     <span className="settlement-arrow">pays</span>
                     <span className="settlement-participant settlement-recipient">{s.recipient_name}</span>
                   </div>
-                  <div className="settlement-amount-badge">
-                    <span className="settlement-amount">
-                      {group.currency} {s.amount.toFixed(2)}
-                    </span>
+                  <div className="settlement-actions-group">
+                    <div className="settlement-amount-badge">
+                      <span className="settlement-amount">
+                        {group.currency} {s.amount.toFixed(2)}
+                      </span>
+                    </div>
+                    {!isArchived && (
+                      <button
+                        type="button"
+                        className="btn-record-payment btn-sm"
+                        onClick={() => handleOpenPaymentModal(s)}
+                        title={`Record payment from ${s.payer_name} to ${s.recipient_name}`}
+                      >
+                        Record Payment
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -997,6 +1205,163 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
           </div>
         )}
       </section>
+
+      {/* Payment History Section */}
+      <section className="card">
+        <div className="section-header">
+          <h3 className="card-title">Payment History ({payments.length})</h3>
+        </div>
+
+        {payments.length === 0 ? (
+          <p className="empty-state-text">No payments recorded for this group yet.</p>
+        ) : (
+          <div className="payment-history-container">
+            <div className="payment-history-list">
+              {payments.map((p) => {
+                const payer = members.find((m) => m.id === p.payer_id);
+                const recipient = members.find((m) => m.id === p.recipient_id);
+                const payerName = payer ? payer.name : p.payer_id;
+                const recipientName = recipient ? recipient.name : p.recipient_id;
+
+                return (
+                  <div key={p.id} className="payment-history-item">
+                    <div className="payment-history-info">
+                      <div className="payment-flow">
+                        <span className="payment-participant payment-payer">{payerName}</span>
+                        <span className="payment-arrow">paid</span>
+                        <span className="payment-participant payment-recipient">{recipientName}</span>
+                      </div>
+                      <div className="payment-meta-row">
+                        <span className="payment-date">{p.payment_date}</span>
+                        {p.notes && (
+                          <>
+                            <span className="meta-separator">•</span>
+                            <span className="payment-notes-text">{p.notes}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="payment-amount-container">
+                      <span className="payment-amount-value">
+                        {group.currency} {p.amount.toFixed(2)}
+                      </span>
+                      <span className="badge badge-settled">Paid</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Record Payment Modal */}
+      {showPaymentModal && (
+        <div className="modal-backdrop" onClick={handleClosePaymentModal}>
+          <div className="modal-content payment-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Record Settlement Payment</h3>
+              <button
+                type="button"
+                className="btn-close-modal"
+                onClick={handleClosePaymentModal}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {paymentError && (
+              <div className="error-banner" role="alert">
+                <span className="error-banner-icon">⚠</span>
+                <span className="error-banner-message">{paymentError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleRecordPaymentSubmit} className="payment-form">
+              <div className="payment-parties-card">
+                <div className="party-column payer-col">
+                  <span className="party-label">Payer (Debtor)</span>
+                  <strong className="party-name">{paymentPayerName}</strong>
+                </div>
+                <div className="party-arrow-indicator">➔</div>
+                <div className="party-column recipient-col">
+                  <span className="party-label">Recipient (Creditor)</span>
+                  <strong className="party-name">{paymentRecipientName}</strong>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="payment-amount-input" className="form-label">
+                  Payment Amount ({group.currency}) *
+                </label>
+                <input
+                  id="payment-amount-input"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={paymentMaxAmount}
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  className="form-input"
+                  required
+                  autoFocus
+                />
+                <small className="form-hint">
+                  Suggested: {group.currency} {paymentMaxAmount.toFixed(2)}. Partial payments permitted up to this amount.
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="payment-date-input" className="form-label">
+                  Payment Date *
+                </label>
+                <input
+                  id="payment-date-input"
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="form-input"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="payment-notes-input" className="form-label">
+                  Notes / Reference (Optional, max 255 chars)
+                </label>
+                <input
+                  id="payment-notes-input"
+                  type="text"
+                  maxLength={255}
+                  placeholder="e.g. Bank transfer ref, UPI, cash"
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  className="form-input"
+                />
+              </div>
+
+              <div className="form-actions">
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={paymentLoading}
+                >
+                  {paymentLoading ? 'Recording...' : 'Confirm Payment'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleClosePaymentModal}
+                  disabled={paymentLoading}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

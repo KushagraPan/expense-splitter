@@ -9,7 +9,7 @@
  * never directly accessing mockStore or HTTP fetch logic.
  */
 
-import type { Group, Member, Expense, CreateExpenseInput, NetBalance, SettlementSuggestion } from '../types/index.ts';
+import type { Group, Member, Expense, CreateExpenseInput, NetBalance, SettlementSuggestion, Payment, CreatePaymentInput } from '../types/index.ts';
 import { mockStore } from './mockStore.ts';
 
 export interface ApiService {
@@ -26,6 +26,10 @@ export interface ApiService {
   deleteExpense(groupId: string, expenseId: string): Promise<void>;
   getNetBalances(groupId: string): Promise<NetBalance[]>;
   getSettlementSuggestions(groupId: string): Promise<SettlementSuggestion[]>;
+  getPayments(groupId: string): Promise<Payment[]>;
+  recordPayment(groupId: string, input: CreatePaymentInput): Promise<Payment>;
+  archiveGroup(groupId: string): Promise<Group>;
+  reopenGroup(groupId: string): Promise<Group>;
 }
 
 /**
@@ -47,4 +51,8 @@ export const apiService: ApiService = {
   deleteExpense: (groupId: string, expenseId: string) => mockStore.deleteExpense(groupId, expenseId),
   getNetBalances: (groupId: string) => mockStore.getNetBalances(groupId),
   getSettlementSuggestions: (groupId: string) => mockStore.getSettlementSuggestions(groupId),
+  getPayments: (groupId: string) => mockStore.getPayments(groupId),
+  recordPayment: (groupId: string, input: CreatePaymentInput) => mockStore.recordPayment(groupId, input),
+  archiveGroup: (groupId: string) => mockStore.archiveGroup(groupId),
+  reopenGroup: (groupId: string) => mockStore.reopenGroup(groupId),
 };

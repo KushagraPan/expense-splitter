@@ -3,12 +3,13 @@
  * Reference: product-spec.md, _docs/plan.md (Phase C)
  */
 
-import type { Group, Member, Expense, ExpenseShare, Payment, SplitMethod, CreateExpenseInput, NetBalance, SettlementSuggestion } from '../types/index.ts';
+import type { Group, Member, Expense, ExpenseShare, Payment, CreatePaymentInput, SplitMethod, CreateExpenseInput, NetBalance, SettlementSuggestion } from '../types/index.ts';
 import { calculateNetBalances, calculateSettlementSuggestions } from '../utils/calculations.ts';
 
 const STORAGE_KEY_GROUPS = 'expense_splitter_groups';
 const STORAGE_KEY_MEMBERS = 'expense_splitter_members';
 const STORAGE_KEY_EXPENSES = 'expense_splitter_expenses';
+const STORAGE_KEY_PAYMENTS = 'expense_splitter_payments';
 
 // Initial pre-seeded mock groups
 const SEEDED_GROUPS: Group[] = [
@@ -124,8 +125,6 @@ const SEEDED_EXPENSES: Expense[] = [
   },
 ];
 
-const mockPayments: Payment[] = [];
-
 /**
  * Safely loads groups from localStorage, falling back to SEEDED_GROUPS.
  */
@@ -237,9 +236,43 @@ function saveExpensesToStorage(expenses: Expense[]): void {
   }
 }
 
+/**
+ * Safely loads payments from localStorage.
+ */
+function loadInitialPayments(): Payment[] {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_PAYMENTS);
+    if (!raw) {
+      return [];
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed as Payment[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function savePaymentsToStorage(payments: Payment[]): void {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(STORAGE_KEY_PAYMENTS, JSON.stringify(payments));
+  } catch {
+    // Graceful fallback
+  }
+}
+
 let mockGroups: Group[] = loadInitialGroups();
 let mockMembers: Member[] = loadInitialMembers();
 let mockExpenses: Expense[] = loadInitialExpenses();
+let mockPayments: Payment[] = loadInitialPayments();
 
 /**
  * Mock Store API implementation simulating asynchronous backend calls.
@@ -259,7 +292,7 @@ export const mockStore = {
       throw new Error('Group name cannot be empty');
     }
     const newGroup: Group = {
-      id: `grp-${Date.now()}`,
+      id: `grp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: input.name.trim(),
       currency: input.currency.trim().toUpperCase() || 'USD',
       status: 'ACTIVE',
@@ -268,6 +301,55 @@ export const mockStore = {
     mockGroups = [newGroup, ...mockGroups];
     saveGroupsToStorage(mockGroups);
     return { ...newGroup };
+  },
+
+  async archiveGroup(groupId: string): Promise<Group> {
+    const groupIndex = mockGroups.findIndex((g) => g.id === groupId);
+    if (groupIndex === -1) {
+      throw new Error('Group not found');
+    }
+    const group = mockGroups[groupIndex];
+    if (group.status === 'ARCHIVED') {
+      throw new Error('Group is already archived');
+    }
+
+    const netBalances = await this.getNetBalances(groupId);
+    const hasUnsettledBalances = netBalances.some(
+      (b) => Math.round(b.net_balance * 100) !== 0
+    );
+
+    if (hasUnsettledBalances) {
+      throw new Error('Cannot archive group with unsettled balances');
+    }
+
+    const updatedGroup: Group = {
+      ...group,
+      status: 'ARCHIVED',
+    };
+
+    mockGroups[groupIndex] = updatedGroup;
+    saveGroupsToStorage(mockGroups);
+    return { ...updatedGroup };
+  },
+
+  async reopenGroup(groupId: string): Promise<Group> {
+    const groupIndex = mockGroups.findIndex((g) => g.id === groupId);
+    if (groupIndex === -1) {
+      throw new Error('Group not found');
+    }
+    const group = mockGroups[groupIndex];
+    if (group.status === 'ACTIVE') {
+      throw new Error('Group is already active');
+    }
+
+    const updatedGroup: Group = {
+      ...group,
+      status: 'ACTIVE',
+    };
+
+    mockGroups[groupIndex] = updatedGroup;
+    saveGroupsToStorage(mockGroups);
+    return { ...updatedGroup };
   },
 
   async getMembers(groupId: string): Promise<Member[]> {
@@ -465,6 +547,79 @@ export const mockStore = {
   async getSettlementSuggestions(groupId: string): Promise<SettlementSuggestion[]> {
     const netBalances = await this.getNetBalances(groupId);
     return calculateSettlementSuggestions(netBalances);
+  },
+
+  async getPayments(groupId: string): Promise<Payment[]> {
+    const group = mockGroups.find((g) => g.id === groupId);
+    if (!group) {
+      throw new Error('Group not found');
+    }
+    return mockPayments
+      .filter((p) => p.group_id === groupId)
+      .map((p) => ({ ...p }));
+  },
+
+  async recordPayment(groupId: string, input: CreatePaymentInput): Promise<Payment> {
+    const group = mockGroups.find((g) => g.id === groupId);
+    if (!group) {
+      throw new Error('Group not found');
+    }
+    if (group.status === 'ARCHIVED') {
+      throw new Error('Cannot record payment in an archived group');
+    }
+
+    if (typeof input.amount !== 'number' || isNaN(input.amount) || input.amount <= 0) {
+      throw new Error('Payment amount must be greater than zero');
+    }
+
+    const paymentCents = Math.round(input.amount * 100);
+    if (paymentCents <= 0) {
+      throw new Error('Payment amount must be greater than zero');
+    }
+
+    if (input.payer_id === input.recipient_id) {
+      throw new Error('Payer and recipient cannot be the same member');
+    }
+
+    const groupMembers = mockMembers.filter((m) => m.group_id === groupId);
+    const payer = groupMembers.find((m) => m.id === input.payer_id);
+    const recipient = groupMembers.find((m) => m.id === input.recipient_id);
+    if (!payer || !recipient) {
+      throw new Error('Both payer and recipient must belong to the group');
+    }
+
+    const currentSuggestions = await this.getSettlementSuggestions(groupId);
+    const matching = currentSuggestions.find(
+      (s) => s.payer_id === input.payer_id && s.recipient_id === input.recipient_id
+    );
+
+    if (!matching) {
+      throw new Error('No outstanding settlement owed to recipient');
+    }
+
+    const suggestedCents = Math.round(matching.amount * 100);
+    if (paymentCents > suggestedCents) {
+      throw new Error('Payment amount exceeds currently suggested settlement amount');
+    }
+
+    const paymentDate = (input.payment_date && input.payment_date.trim())
+      || new Date().toISOString().split('T')[0];
+
+    const newPayment: Payment = {
+      id: `pay-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      group_id: groupId,
+      payer_id: input.payer_id,
+      recipient_id: input.recipient_id,
+      amount: Number((paymentCents / 100).toFixed(2)),
+      payment_date: paymentDate,
+      notes: input.notes?.trim() || undefined,
+      created_at: new Date().toISOString(),
+    };
+
+    mockPayments = [...mockPayments, newPayment];
+    savePaymentsToStorage(mockPayments);
+
+    return { ...newPayment };
   },
 };
 
