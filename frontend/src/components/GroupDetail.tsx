@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiService } from '../services/api';
-import type { Group, Member, SplitMethod } from '../types';
+import type { Group, Member, SplitMethod, Expense, NetBalance, SettlementSuggestion } from '../types';
 
 interface GroupDetailProps {
   groupId: string;
@@ -10,6 +10,9 @@ interface GroupDetailProps {
 export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [balances, setBalances] = useState<NetBalance[]>([]);
+  const [settlements, setSettlements] = useState<SettlementSuggestion[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,8 +21,10 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Issue #4 expense creation state
+  // Issue #4 & #5 expense management state
   const [showExpenseForm, setShowExpenseForm] = useState<boolean>(false);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [expandedExpenseIds, setExpandedExpenseIds] = useState<Set<string>>(new Set());
   const [expenseTitle, setExpenseTitle] = useState<string>('');
   const [expenseAmount, setExpenseAmount] = useState<string>('');
   const [expensePayerId, setExpensePayerId] = useState<string>('');
@@ -31,15 +36,23 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
   const [expenseNotes, setExpenseNotes] = useState<string>('');
   const [expenseSuccess, setExpenseSuccess] = useState<string | null>(null);
   const [expenseError, setExpenseError] = useState<string | null>(null);
-  const [createdCount, setCreatedCount] = useState<number>(0);
 
   useEffect(() => {
     let ignore = false;
-    Promise.all([apiService.getGroup(groupId), apiService.getMembers(groupId)])
-      .then(([groupData, membersData]) => {
+    Promise.all([
+      apiService.getGroup(groupId),
+      apiService.getMembers(groupId),
+      apiService.getExpenses(groupId),
+      apiService.getNetBalances(groupId),
+      apiService.getSettlementSuggestions(groupId),
+    ])
+      .then(([groupData, membersData, expensesData, balancesData, settlementsData]) => {
         if (!ignore) {
           setGroup(groupData);
           setMembers(membersData);
+          setExpenses(expensesData);
+          setBalances(balancesData);
+          setSettlements(settlementsData);
           if (membersData.length > 0) {
             setExpensePayerId((prev) => prev || membersData[0].id);
             setSelectedParticipants(membersData.map((m) => m.id));
@@ -68,6 +81,12 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
       setMembers((prev) => [...prev, created]);
       setSelectedParticipants((prev) => [...prev, created.id]);
       setNewMemberName('');
+      const [updatedBalances, updatedSettlements] = await Promise.all([
+        apiService.getNetBalances(groupId),
+        apiService.getSettlementSuggestions(groupId),
+      ]);
+      setBalances(updatedBalances);
+      setSettlements(updatedSettlements);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to add member');
     } finally {
@@ -88,6 +107,12 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         return remaining;
       });
       setSelectedParticipants((prev) => prev.filter((id) => id !== memberId));
+      const [updatedBalances, updatedSettlements] = await Promise.all([
+        apiService.getNetBalances(groupId),
+        apiService.getSettlementSuggestions(groupId),
+      ]);
+      setBalances(updatedBalances);
+      setSettlements(updatedSettlements);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to delete member');
     } finally {
@@ -108,7 +133,115 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     }));
   };
 
-  const handleCreateExpense = async (e: React.FormEvent) => {
+  const handleStartEditExpense = (expense: Expense) => {
+    setEditingExpenseId(expense.id);
+    setExpenseTitle(expense.title);
+    setExpenseAmount(expense.amount.toString());
+    setExpensePayerId(expense.payer_id);
+    setExpenseDate(expense.expense_date);
+    setSplitMethod(expense.split_method);
+    setExpenseCategory(expense.category || '');
+    setExpenseNotes(expense.notes || '');
+
+    const participantIds = expense.shares ? expense.shares.map((s) => s.member_id) : [];
+    setSelectedParticipants(participantIds);
+
+    const sharesMap: Record<string, string> = {};
+    if (expense.shares) {
+      expense.shares.forEach((s) => {
+        sharesMap[s.member_id] = s.owed_amount.toString();
+      });
+    }
+    setExactShares(sharesMap);
+
+    setShowExpenseForm(true);
+    setExpenseError(null);
+    setExpenseSuccess(null);
+  };
+
+  const handleCancelExpenseForm = () => {
+    setShowExpenseForm(false);
+    setEditingExpenseId(null);
+    setExpenseTitle('');
+    setExpenseAmount('');
+    if (members.length > 0) {
+      setExpensePayerId(members[0].id);
+      setSelectedParticipants(members.map((m) => m.id));
+    } else {
+      setExpensePayerId('');
+      setSelectedParticipants([]);
+    }
+    setExpenseDate(new Date().toISOString().split('T')[0]);
+    setSplitMethod('EQUAL');
+    setExpenseCategory('');
+    setExpenseNotes('');
+    setExactShares({});
+    setExpenseError(null);
+  };
+
+  const handleOpenAddExpense = () => {
+    setEditingExpenseId(null);
+    setExpenseTitle('');
+    setExpenseAmount('');
+    if (members.length > 0) {
+      setExpensePayerId(members[0].id);
+      setSelectedParticipants(members.map((m) => m.id));
+    }
+    setExpenseDate(new Date().toISOString().split('T')[0]);
+    setSplitMethod('EQUAL');
+    setExpenseCategory('');
+    setExpenseNotes('');
+    setExactShares({});
+    setExpenseError(null);
+    setExpenseSuccess(null);
+    setShowExpenseForm(true);
+  };
+
+  const toggleExpenseExpanded = (expenseId: string) => {
+    setExpandedExpenseIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(expenseId)) {
+        next.delete(expenseId);
+      } else {
+        next.add(expenseId);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteExpense = async (expense: Expense) => {
+    setExpenseError(null);
+    setExpenseSuccess(null);
+
+    const confirmed = window.confirm(
+      `Are you sure you want to permanently delete the expense "${expense.title}"?`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await apiService.deleteExpense(groupId, expense.id);
+      setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
+      if (editingExpenseId === expense.id) {
+        handleCancelExpenseForm();
+      }
+      setExpenseSuccess(`Expense "${expense.title}" deleted successfully!`);
+      const [updatedBalances, updatedSettlements] = await Promise.all([
+        apiService.getNetBalances(groupId),
+        apiService.getSettlementSuggestions(groupId),
+      ]);
+      setBalances(updatedBalances);
+      setSettlements(updatedSettlements);
+    } catch (err) {
+      setExpenseError(err instanceof Error ? err.message : 'Failed to delete expense');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSaveExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     setExpenseError(null);
     setExpenseSuccess(null);
@@ -127,44 +260,74 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     try {
       setActionLoading(true);
       if (splitMethod === 'EQUAL') {
-        const created = await apiService.createExpense(groupId, {
+        const payload = {
           title: expenseTitle,
           amount: parsedAmount,
           payer_id: expensePayerId,
-          split_method: 'EQUAL',
+          split_method: 'EQUAL' as const,
           expense_date: expenseDate,
-          category: expenseCategory,
-          notes: expenseNotes,
+          category: expenseCategory.trim() || undefined,
+          notes: expenseNotes.trim() || undefined,
           participants: selectedParticipants,
-        });
-        setExpenseSuccess(`Expense "${created.title}" (${group?.currency} ${created.amount.toFixed(2)}) created successfully!`);
+        };
+
+        if (editingExpenseId) {
+          const updated = await apiService.updateExpense(groupId, editingExpenseId, payload);
+          setExpenses((prev) =>
+            prev.map((item) => (item.id === editingExpenseId ? updated : item))
+          );
+          setExpenseSuccess(
+            `Expense "${updated.title}" (${group?.currency} ${updated.amount.toFixed(2)}) updated successfully!`
+          );
+        } else {
+          const created = await apiService.createExpense(groupId, payload);
+          setExpenses((prev) => [created, ...prev]);
+          setExpenseSuccess(
+            `Expense "${created.title}" (${group?.currency} ${created.amount.toFixed(2)}) created successfully!`
+          );
+        }
       } else {
         const shares = selectedParticipants.map((id) => ({
           member_id: id,
           owed_amount: parseFloat(exactShares[id] || '0') || 0,
         }));
-        const created = await apiService.createExpense(groupId, {
+        const payload = {
           title: expenseTitle,
           amount: parsedAmount,
           payer_id: expensePayerId,
-          split_method: 'EXACT',
+          split_method: 'EXACT' as const,
           expense_date: expenseDate,
-          category: expenseCategory,
-          notes: expenseNotes,
+          category: expenseCategory.trim() || undefined,
+          notes: expenseNotes.trim() || undefined,
           shares,
-        });
-        setExpenseSuccess(`Expense "${created.title}" (${group?.currency} ${created.amount.toFixed(2)}) created successfully!`);
+        };
+
+        if (editingExpenseId) {
+          const updated = await apiService.updateExpense(groupId, editingExpenseId, payload);
+          setExpenses((prev) =>
+            prev.map((item) => (item.id === editingExpenseId ? updated : item))
+          );
+          setExpenseSuccess(
+            `Expense "${updated.title}" (${group?.currency} ${updated.amount.toFixed(2)}) updated successfully!`
+          );
+        } else {
+          const created = await apiService.createExpense(groupId, payload);
+          setExpenses((prev) => [created, ...prev]);
+          setExpenseSuccess(
+            `Expense "${created.title}" (${group?.currency} ${created.amount.toFixed(2)}) created successfully!`
+          );
+        }
       }
 
-      setCreatedCount((prev) => prev + 1);
-      setExpenseTitle('');
-      setExpenseAmount('');
-      setExpenseCategory('');
-      setExpenseNotes('');
-      setExactShares({});
-      setShowExpenseForm(false);
+      const [updatedBalances, updatedSettlements] = await Promise.all([
+        apiService.getNetBalances(groupId),
+        apiService.getSettlementSuggestions(groupId),
+      ]);
+      setBalances(updatedBalances);
+      setSettlements(updatedSettlements);
+      handleCancelExpenseForm();
     } catch (err) {
-      setExpenseError(err instanceof Error ? err.message : 'Failed to create expense');
+      setExpenseError(err instanceof Error ? err.message : 'Failed to save expense');
     } finally {
       setActionLoading(false);
     }
@@ -309,20 +472,17 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         </div>
       </section>
 
-      {/* Expense Creation Section (Issue #4) */}
+      {/* Expense Management Section (Issues #4 & #5) */}
       <section className="card">
         <div className="section-header-between">
-          <h3 className="card-title">Expenses</h3>
-          {!isArchived && members.length > 0 && (
+          <h3 className="card-title">Expenses ({expenses.length})</h3>
+          {!isArchived && members.length > 0 && !showExpenseForm && (
             <button
               type="button"
-              className={showExpenseForm ? 'btn-secondary' : 'btn-primary'}
-              onClick={() => {
-                setShowExpenseForm((prev) => !prev);
-                setExpenseError(null);
-              }}
+              className="btn-primary"
+              onClick={handleOpenAddExpense}
             >
-              {showExpenseForm ? 'Cancel' : '+ Add Expense'}
+              + Add Expense
             </button>
           )}
         </div>
@@ -358,36 +518,28 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         )}
 
         {isArchived && (
-          <p className="empty-state-text">Expense creation is disabled because this group is archived.</p>
+          <p className="empty-state-text">Expense creation, editing, and deletion are disabled because this group is archived.</p>
         )}
 
         {!isArchived && members.length === 0 && (
           <p className="empty-state-text">Please add at least one member above before creating an expense.</p>
         )}
 
-        {!showExpenseForm && !isArchived && members.length > 0 && (
-          <div className="expense-placeholder-state">
-            <p className="empty-state-text">
-              {createdCount > 0
-                ? `${createdCount} expense(s) logged in this session.`
-                : 'No new expenses logged in this session yet.'}
-            </p>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => {
-                setShowExpenseForm(true);
-                setExpenseError(null);
-              }}
-            >
-              + Add Expense
-            </button>
-          </div>
-        )}
-
+        {/* Expense Form (Create or Edit) */}
         {showExpenseForm && !isArchived && (
-          <form onSubmit={handleCreateExpense} className="expense-form">
-            <h4 className="subsection-title">New Expense</h4>
+          <form onSubmit={handleSaveExpense} className="expense-form">
+            <div className="form-header-row">
+              <h4 className="subsection-title">
+                {editingExpenseId ? 'Edit Expense' : 'New Expense'}
+              </h4>
+              <button
+                type="button"
+                onClick={handleCancelExpenseForm}
+                className="btn-link"
+              >
+                Cancel
+              </button>
+            </div>
 
             <div className="form-grid">
               <div className="form-group">
@@ -610,11 +762,11 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                 disabled={actionLoading || isArchived}
                 className="btn-primary"
               >
-                {actionLoading ? 'Saving...' : 'Save Expense'}
+                {actionLoading ? 'Saving...' : (editingExpenseId ? 'Update Expense' : 'Save Expense')}
               </button>
               <button
                 type="button"
-                onClick={() => setShowExpenseForm(false)}
+                onClick={handleCancelExpenseForm}
                 className="btn-secondary"
               >
                 Cancel
@@ -622,14 +774,228 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
             </div>
           </form>
         )}
+
+        {/* Expense List View */}
+        <div className="expense-list-container">
+          {expenses.length === 0 ? (
+            <p className="empty-state-text">No expenses recorded for this group yet.</p>
+          ) : (
+            <div className="expense-list">
+              {expenses.map((exp) => {
+                const payerMember = members.find((m) => m.id === exp.payer_id);
+                const isExpanded = expandedExpenseIds.has(exp.id);
+                const isPayerParticipant = exp.shares?.some((s) => s.member_id === exp.payer_id);
+
+                return (
+                  <div key={exp.id} className="expense-card">
+                    <div className="expense-card-header">
+                      <div className="expense-primary-info">
+                        <h4 className="expense-title">{exp.title}</h4>
+                        <div className="expense-meta-row">
+                          <span className="expense-date">{exp.expense_date}</span>
+                          <span className="meta-separator">•</span>
+                          <span className="expense-payer">
+                            Paid by <strong>{payerMember ? payerMember.name : exp.payer_id}</strong>
+                          </span>
+                          {exp.category && (
+                            <>
+                              <span className="meta-separator">•</span>
+                              <span className="badge badge-category">{exp.category}</span>
+                            </>
+                          )}
+                          <span className="meta-separator">•</span>
+                          <span className="badge badge-split">
+                            {exp.split_method === 'EQUAL' ? 'Equal Split' : 'Exact Split'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="expense-header-right">
+                        <span className="expense-total-amount">
+                          {group.currency} {exp.amount.toFixed(2)}
+                        </span>
+                        <div className="expense-actions">
+                          <button
+                            type="button"
+                            className="btn-secondary btn-sm"
+                            onClick={() => toggleExpenseExpanded(exp.id)}
+                            aria-expanded={isExpanded}
+                          >
+                            {isExpanded ? 'Hide Details' : 'Details'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary btn-sm"
+                            onClick={() => handleStartEditExpense(exp)}
+                            disabled={isArchived || actionLoading}
+                            title={isArchived ? 'Cannot edit expense in an archived group' : `Edit ${exp.title}`}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-delete-expense btn-sm"
+                            onClick={() => handleDeleteExpense(exp)}
+                            disabled={isArchived || actionLoading}
+                            title={isArchived ? 'Cannot delete expense from an archived group' : `Delete ${exp.title}`}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Detailed breakdown when expanded */}
+                    {isExpanded && (
+                      <div className="expense-details-expanded">
+                        {exp.notes && (
+                          <div className="expense-notes-display">
+                            <strong>Notes:</strong> {exp.notes}
+                          </div>
+                        )}
+
+                        <div className="expense-shares-section">
+                          <h5 className="shares-breakdown-title">
+                            Participant Shares ({exp.shares?.length || 0})
+                          </h5>
+                          <ul className="shares-detail-list">
+                            {exp.shares?.map((share) => {
+                              const participant = members.find((m) => m.id === share.member_id);
+                              const isPayer = share.member_id === exp.payer_id;
+                              return (
+                                <li key={share.member_id} className="share-detail-item">
+                                  <span className="share-member-name">
+                                    {participant ? participant.name : share.member_id}
+                                    {isPayer && <span className="payer-tag"> (Payer)</span>}
+                                  </span>
+                                  <span className="share-owed-amount">
+                                    {group.currency} {share.owed_amount.toFixed(2)}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+
+                          {!isPayerParticipant && (
+                            <p className="payer-excluded-note">
+                              ℹ Payer ({payerMember ? payerMember.name : exp.payer_id}) is excluded from participants and owes {group.currency} 0.00.
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="expense-timestamp-meta">
+                          <span>Created: {new Date(exp.created_at).toLocaleString()}</span>
+                          {exp.updated_at && (
+                            <span> • Updated: {new Date(exp.updated_at).toLocaleString()}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </section>
 
-      {/* Placeholder for future settlement modules */}
-      <section className="card placeholder-section">
-        <h3 className="card-title">Settlements & Balances</h3>
-        <p className="empty-state-text">
-          Net balance calculation and debt simplification will be available in Issues #5–#7.
-        </p>
+      {/* Net Balances Section (Issue #6) */}
+      <section className="card">
+        <div className="section-header">
+          <h3 className="card-title">Net Balances</h3>
+        </div>
+
+        {members.length === 0 ? (
+          <p className="empty-state-text">No members in this group yet.</p>
+        ) : (
+          <div className="balances-container">
+            <div className="balances-list">
+              {balances.map((b) => {
+                let statusClass = 'badge-settled';
+                let statusLabel = 'Settled';
+                let amountClass = 'balance-zero';
+                let formattedAmount = `${group.currency} 0.00`;
+
+                if (b.net_balance > 0) {
+                  statusClass = 'badge-creditor';
+                  statusLabel = 'Owed';
+                  amountClass = 'balance-positive';
+                  formattedAmount = `+${group.currency} ${b.net_balance.toFixed(2)}`;
+                } else if (b.net_balance < 0) {
+                  statusClass = 'badge-debtor';
+                  statusLabel = 'Owes';
+                  amountClass = 'balance-negative';
+                  formattedAmount = `-${group.currency} ${Math.abs(b.net_balance).toFixed(2)}`;
+                }
+
+                return (
+                  <div key={b.member_id} className="balance-item">
+                    <div className="balance-member-info">
+                      <span className="member-avatar">
+                        {b.member_name.charAt(0).toUpperCase()}
+                      </span>
+                      <div className="balance-name-group">
+                        <span className="balance-member-name">{b.member_name}</span>
+                        {b.paid_amount !== undefined && b.owed_amount !== undefined && (
+                          <span className="balance-subtext">
+                            Paid: {group.currency} {b.paid_amount.toFixed(2)} • Owed: {group.currency} {b.owed_amount.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="balance-status-group">
+                      <span className={`balance-amount ${amountClass}`}>
+                        {formattedAmount}
+                      </span>
+                      <span className={`badge ${statusClass}`}>
+                        {statusLabel}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Settlement Suggestions Section (Issue #7) */}
+      <section className="card">
+        <div className="section-header">
+          <h3 className="card-title">Settlement Suggestions</h3>
+        </div>
+
+        {members.length === 0 ? (
+          <p className="empty-state-text">No members in this group yet.</p>
+        ) : settlements.length === 0 ? (
+          <div className="settled-state-box">
+            <span className="settled-icon">✓</span>
+            <div className="settled-text-group">
+              <span className="settled-title">All settled</span>
+              <span className="settled-subtitle">No outstanding debts in this group.</span>
+            </div>
+          </div>
+        ) : (
+          <div className="settlement-container">
+            <div className="settlement-list">
+              {settlements.map((s, idx) => (
+                <div key={`${s.payer_id}-${s.recipient_id}-${idx}`} className="settlement-item">
+                  <div className="settlement-flow">
+                    <span className="settlement-participant settlement-payer">{s.payer_name}</span>
+                    <span className="settlement-arrow">pays</span>
+                    <span className="settlement-participant settlement-recipient">{s.recipient_name}</span>
+                  </div>
+                  <div className="settlement-amount-badge">
+                    <span className="settlement-amount">
+                      {group.currency} {s.amount.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

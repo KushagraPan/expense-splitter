@@ -70,6 +70,8 @@ export interface NetBalance {
   member_id: string;
   member_name: string;
   net_balance: number;
+  paid_amount?: number;
+  owed_amount?: number;
 }
 
 export interface SettlementSuggestion {

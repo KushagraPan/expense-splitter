@@ -9,7 +9,7 @@
  * never directly accessing mockStore or HTTP fetch logic.
  */
 
-import type { Group, Member, Expense, CreateExpenseInput } from '../types/index.ts';
+import type { Group, Member, Expense, CreateExpenseInput, NetBalance, SettlementSuggestion } from '../types/index.ts';
 import { mockStore } from './mockStore.ts';
 
 export interface ApiService {
@@ -20,7 +20,12 @@ export interface ApiService {
   addMember(groupId: string, name: string): Promise<Member>;
   deleteMember(groupId: string, memberId: string): Promise<void>;
   getExpenses(groupId: string): Promise<Expense[]>;
+  getExpense(groupId: string, expenseId: string): Promise<Expense | null>;
   createExpense(groupId: string, input: CreateExpenseInput): Promise<Expense>;
+  updateExpense(groupId: string, expenseId: string, input: CreateExpenseInput): Promise<Expense>;
+  deleteExpense(groupId: string, expenseId: string): Promise<void>;
+  getNetBalances(groupId: string): Promise<NetBalance[]>;
+  getSettlementSuggestions(groupId: string): Promise<SettlementSuggestion[]>;
 }
 
 /**
@@ -35,5 +40,11 @@ export const apiService: ApiService = {
   addMember: (groupId: string, name: string) => mockStore.addMember(groupId, name),
   deleteMember: (groupId: string, memberId: string) => mockStore.deleteMember(groupId, memberId),
   getExpenses: (groupId: string) => mockStore.getExpenses(groupId),
+  getExpense: (groupId: string, expenseId: string) => mockStore.getExpense(groupId, expenseId),
   createExpense: (groupId: string, input: CreateExpenseInput) => mockStore.createExpense(groupId, input),
+  updateExpense: (groupId: string, expenseId: string, input: CreateExpenseInput) =>
+    mockStore.updateExpense(groupId, expenseId, input),
+  deleteExpense: (groupId: string, expenseId: string) => mockStore.deleteExpense(groupId, expenseId),
+  getNetBalances: (groupId: string) => mockStore.getNetBalances(groupId),
+  getSettlementSuggestions: (groupId: string) => mockStore.getSettlementSuggestions(groupId),
 };

@@ -3,7 +3,8 @@
  * Reference: product-spec.md, _docs/plan.md (Phase C)
  */
 
-import type { Group, Member, Expense, Payment, CreateExpenseInput } from '../types/index.ts';
+import type { Group, Member, Expense, ExpenseShare, Payment, SplitMethod, CreateExpenseInput, NetBalance, SettlementSuggestion } from '../types/index.ts';
+import { calculateNetBalances, calculateSettlementSuggestions } from '../utils/calculations.ts';
 
 const STORAGE_KEY_GROUPS = 'expense_splitter_groups';
 const STORAGE_KEY_MEMBERS = 'expense_splitter_members';
@@ -357,6 +358,15 @@ export const mockStore = {
       }));
   },
 
+  async getExpense(groupId: string, expenseId: string): Promise<Expense | null> {
+    const found = mockExpenses.find((e) => e.id === expenseId && e.group_id === groupId);
+    if (!found) return null;
+    return {
+      ...found,
+      shares: found.shares ? found.shares.map((s) => ({ ...s })) : undefined,
+    };
+  },
+
   async createExpense(groupId: string, input: CreateExpenseInput): Promise<Expense> {
     const group = mockGroups.find((g) => g.id === groupId);
     if (!group) {
@@ -366,111 +376,15 @@ export const mockStore = {
       throw new Error('Cannot create expense in an archived group');
     }
 
-    const trimmedTitle = input.title ? input.title.trim() : '';
-    if (!trimmedTitle) {
-      throw new Error('Expense title cannot be empty');
-    }
-
-    if (typeof input.amount !== 'number' || isNaN(input.amount) || input.amount <= 0) {
-      throw new Error('Expense amount must be greater than zero');
-    }
-
-    const totalCents = Math.round(input.amount * 100);
-    const totalAmount = totalCents / 100;
-
     const groupMembers = mockMembers.filter((m) => m.group_id === groupId);
-    const payer = groupMembers.find((m) => m.id === input.payer_id);
-    if (!payer) {
-      throw new Error('Invalid payer: member does not belong to group');
-    }
-
-    if (input.notes && input.notes.length > 255) {
-      throw new Error('Notes cannot exceed 255 characters');
-    }
-
     const newExpenseId = `exp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    let calculatedShares: { expense_id: string; member_id: string; owed_amount: number }[] = [];
-
-    if (input.split_method === 'EQUAL') {
-      const participantIds = input.participants && input.participants.length > 0
-        ? input.participants
-        : input.shares?.map((s) => s.member_id) || [];
-
-      if (participantIds.length === 0) {
-        throw new Error('At least one participant is required');
-      }
-
-      // Ensure all participants belong to the group
-      for (const pid of participantIds) {
-        if (!groupMembers.some((m) => m.id === pid)) {
-          throw new Error('Invalid participant: member does not belong to group');
-        }
-      }
-
-      const count = participantIds.length;
-      const baseCents = Math.floor(totalCents / count);
-      const remainderCents = totalCents - baseCents * count;
-
-      calculatedShares = participantIds.map((memberId, idx) => {
-        const shareCents = idx < remainderCents ? baseCents + 1 : baseCents;
-        return {
-          expense_id: newExpenseId,
-          member_id: memberId,
-          owed_amount: Number((shareCents / 100).toFixed(2)),
-        };
-      });
-    } else if (input.split_method === 'EXACT') {
-      const exactShares = input.shares || [];
-      if (exactShares.length === 0) {
-        throw new Error('At least one participant is required');
-      }
-
-      for (const s of exactShares) {
-        if (!groupMembers.some((m) => m.id === s.member_id)) {
-          throw new Error('Invalid participant: member does not belong to group');
-        }
-        if (typeof s.owed_amount !== 'number' || isNaN(s.owed_amount) || s.owed_amount < 0) {
-          throw new Error('Share amount must be a non-negative number');
-        }
-      }
-
-      const sumCents = exactShares.reduce(
-        (acc, s) => acc + Math.round(s.owed_amount * 100),
-        0
-      );
-
-      if (sumCents !== totalCents) {
-        const sumFormatted = (sumCents / 100).toFixed(2);
-        const totalFormatted = (totalCents / 100).toFixed(2);
-        throw new Error(
-          `Sum of exact shares (${sumFormatted}) must equal expense amount (${totalFormatted})`
-        );
-      }
-
-      calculatedShares = exactShares.map((s) => ({
-        expense_id: newExpenseId,
-        member_id: s.member_id,
-        owed_amount: Number(s.owed_amount.toFixed(2)),
-      }));
-    } else {
-      throw new Error(`Unsupported split method: ${input.split_method}`);
-    }
-
-    const expenseDate = (input.expense_date && input.expense_date.trim())
-      || new Date().toISOString().split('T')[0];
+    const validated = validateAndBuildExpenseData(newExpenseId, input, groupMembers);
 
     const newExpense: Expense = {
       id: newExpenseId,
       group_id: groupId,
-      title: trimmedTitle,
-      amount: totalAmount,
-      payer_id: input.payer_id,
-      split_method: input.split_method,
-      expense_date: expenseDate,
-      category: input.category?.trim() || undefined,
-      notes: input.notes?.trim() || undefined,
       created_at: new Date().toISOString(),
-      shares: calculatedShares,
+      ...validated,
     };
 
     mockExpenses = [newExpense, ...mockExpenses];
@@ -478,7 +392,198 @@ export const mockStore = {
 
     return {
       ...newExpense,
-      shares: calculatedShares.map((s) => ({ ...s })),
+      shares: validated.shares.map((s) => ({ ...s })),
     };
   },
+
+  async updateExpense(
+    groupId: string,
+    expenseId: string,
+    input: CreateExpenseInput
+  ): Promise<Expense> {
+    const group = mockGroups.find((g) => g.id === groupId);
+    if (!group) {
+      throw new Error('Group not found');
+    }
+    if (group.status === 'ARCHIVED') {
+      throw new Error('Cannot edit expense in an archived group');
+    }
+
+    const existingIndex = mockExpenses.findIndex(
+      (e) => e.id === expenseId && e.group_id === groupId
+    );
+    if (existingIndex === -1) {
+      throw new Error('Expense not found');
+    }
+
+    const existing = mockExpenses[existingIndex];
+    const groupMembers = mockMembers.filter((m) => m.group_id === groupId);
+    const validated = validateAndBuildExpenseData(expenseId, input, groupMembers);
+
+    const updatedExpense: Expense = {
+      ...existing,
+      ...validated,
+      updated_at: new Date().toISOString(),
+    };
+
+    mockExpenses[existingIndex] = updatedExpense;
+    saveExpensesToStorage(mockExpenses);
+
+    return {
+      ...updatedExpense,
+      shares: validated.shares.map((s) => ({ ...s })),
+    };
+  },
+
+  async deleteExpense(groupId: string, expenseId: string): Promise<void> {
+    const group = mockGroups.find((g) => g.id === groupId);
+    if (!group) {
+      throw new Error('Group not found');
+    }
+    if (group.status === 'ARCHIVED') {
+      throw new Error('Cannot delete expense from an archived group');
+    }
+
+    const existingIndex = mockExpenses.findIndex(
+      (e) => e.id === expenseId && e.group_id === groupId
+    );
+    if (existingIndex === -1) {
+      throw new Error('Expense not found');
+    }
+
+    mockExpenses = mockExpenses.filter((e) => e.id !== expenseId);
+    saveExpensesToStorage(mockExpenses);
+  },
+
+  async getNetBalances(groupId: string): Promise<NetBalance[]> {
+    const groupMembers = mockMembers.filter((m) => m.group_id === groupId);
+    const groupExpenses = mockExpenses.filter((e) => e.group_id === groupId);
+    const groupPayments = mockPayments.filter((p) => p.group_id === groupId);
+    return calculateNetBalances(groupMembers, groupExpenses, groupPayments);
+  },
+
+  async getSettlementSuggestions(groupId: string): Promise<SettlementSuggestion[]> {
+    const netBalances = await this.getNetBalances(groupId);
+    return calculateSettlementSuggestions(netBalances);
+  },
 };
+
+/**
+ * Shared validation and share calculation helper for both creation and editing.
+ */
+function validateAndBuildExpenseData(
+  expenseId: string,
+  input: CreateExpenseInput,
+  groupMembers: Member[]
+): {
+  title: string;
+  amount: number;
+  payer_id: string;
+  split_method: SplitMethod;
+  expense_date: string;
+  category?: string;
+  notes?: string;
+  shares: ExpenseShare[];
+} {
+  const trimmedTitle = input.title ? input.title.trim() : '';
+  if (!trimmedTitle) {
+    throw new Error('Expense title cannot be empty');
+  }
+
+  if (typeof input.amount !== 'number' || isNaN(input.amount) || input.amount <= 0) {
+    throw new Error('Expense amount must be greater than zero');
+  }
+
+  const totalCents = Math.round(input.amount * 100);
+  const totalAmount = totalCents / 100;
+
+  const payer = groupMembers.find((m) => m.id === input.payer_id);
+  if (!payer) {
+    throw new Error('Invalid payer: member does not belong to group');
+  }
+
+  if (input.notes && input.notes.length > 255) {
+    throw new Error('Notes cannot exceed 255 characters');
+  }
+
+  let calculatedShares: ExpenseShare[] = [];
+
+  if (input.split_method === 'EQUAL') {
+    const participantIds = input.participants && input.participants.length > 0
+      ? input.participants
+      : input.shares?.map((s) => s.member_id) || [];
+
+    if (participantIds.length === 0) {
+      throw new Error('At least one participant is required');
+    }
+
+    for (const pid of participantIds) {
+      if (!groupMembers.some((m) => m.id === pid)) {
+        throw new Error('Invalid participant: member does not belong to group');
+      }
+    }
+
+    const count = participantIds.length;
+    const baseCents = Math.floor(totalCents / count);
+    const remainderCents = totalCents - baseCents * count;
+
+    calculatedShares = participantIds.map((memberId, idx) => {
+      const shareCents = idx < remainderCents ? baseCents + 1 : baseCents;
+      return {
+        expense_id: expenseId,
+        member_id: memberId,
+        owed_amount: Number((shareCents / 100).toFixed(2)),
+      };
+    });
+  } else if (input.split_method === 'EXACT') {
+    const exactShares = input.shares || [];
+    if (exactShares.length === 0) {
+      throw new Error('At least one participant is required');
+    }
+
+    for (const s of exactShares) {
+      if (!groupMembers.some((m) => m.id === s.member_id)) {
+        throw new Error('Invalid participant: member does not belong to group');
+      }
+      if (typeof s.owed_amount !== 'number' || isNaN(s.owed_amount) || s.owed_amount < 0) {
+        throw new Error('Share amount must be a non-negative number');
+      }
+    }
+
+    const sumCents = exactShares.reduce(
+      (acc, s) => acc + Math.round(s.owed_amount * 100),
+      0
+    );
+
+    if (sumCents !== totalCents) {
+      const sumFormatted = (sumCents / 100).toFixed(2);
+      const totalFormatted = (totalCents / 100).toFixed(2);
+      throw new Error(
+        `Sum of exact shares (${sumFormatted}) must equal expense amount (${totalFormatted})`
+      );
+    }
+
+    calculatedShares = exactShares.map((s) => ({
+      expense_id: expenseId,
+      member_id: s.member_id,
+      owed_amount: Number(s.owed_amount.toFixed(2)),
+    }));
+  } else {
+    throw new Error(`Unsupported split method: ${input.split_method}`);
+  }
+
+  const expenseDate = (input.expense_date && input.expense_date.trim())
+    || new Date().toISOString().split('T')[0];
+
+  return {
+    title: trimmedTitle,
+    amount: totalAmount,
+    payer_id: input.payer_id,
+    split_method: input.split_method,
+    expense_date: expenseDate,
+    category: input.category?.trim() || undefined,
+    notes: input.notes?.trim() || undefined,
+    shares: calculatedShares,
+  };
+}
+

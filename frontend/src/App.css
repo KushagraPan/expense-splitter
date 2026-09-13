@@ -695,3 +695,432 @@
   margin-top: 1.25rem;
 }
 
+/* Issue #5 Styles: Expense List, Details, Edit, and Delete */
+.form-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.expense-list-container {
+  margin-top: 1rem;
+}
+
+.expense-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.expense-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background-color: #ffffff;
+  padding: 1rem;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.expense-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.expense-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.expense-primary-info {
+  flex: 1;
+  min-width: 240px;
+}
+
+.expense-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.expense-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.825rem;
+  color: #64748b;
+  flex-wrap: wrap;
+}
+
+.meta-separator {
+  color: #cbd5e1;
+}
+
+.expense-payer strong {
+  color: #334155;
+}
+
+.badge-category {
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.badge-split {
+  background-color: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.expense-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.expense-total-amount {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.expense-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.btn-sm {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+}
+
+.btn-delete-expense {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.8rem;
+  color: #dc2626;
+  background-color: #ffffff;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.btn-delete-expense:hover:not(:disabled) {
+  background-color: #fef2f2;
+  border-color: #ef4444;
+}
+
+.btn-delete-expense:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
+
+.expense-details-expanded {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.expense-notes-display {
+  font-size: 0.875rem;
+  color: #475569;
+  background-color: #f8fafc;
+  padding: 0.45rem 0.65rem;
+  border-radius: 4px;
+  border-left: 3px solid #94a3b8;
+}
+
+.expense-shares-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.shares-breakdown-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.shares-detail-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.4rem;
+}
+
+.share-detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.35rem 0.6rem;
+  background-color: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.share-member-name {
+  color: #334155;
+  font-weight: 500;
+}
+
+.share-owed-amount {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.payer-excluded-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: #2563eb;
+  background-color: #eff6ff;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+}
+
+.expense-timestamp-meta {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.25rem;
+}
+
+/* Issue #6 Styles: Net Balance Calculation View */
+.balances-container {
+  margin-top: 0.5rem;
+}
+
+.balances-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.balance-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.balance-item:hover {
+  border-color: #cbd5e1;
+  background-color: #f1f5f9;
+}
+
+.balance-member-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.balance-name-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.balance-member-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.balance-subtext {
+  font-size: 0.775rem;
+  color: #64748b;
+}
+
+.balance-status-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.balance-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-positive {
+  color: #15803d;
+}
+
+.balance-negative {
+  color: #b91c1c;
+}
+
+.balance-zero {
+  color: #64748b;
+}
+
+.badge-creditor {
+  background-color: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+  font-weight: 600;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+}
+
+.badge-debtor {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  font-weight: 600;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+}
+
+.badge-settled {
+  background-color: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  font-weight: 500;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+}
+
+/* Issue #7 Settlement Suggestions */
+.settlement-container {
+  width: 100%;
+}
+
+.settlement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.settlement-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 1.125rem;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.15s ease-in-out;
+}
+
+.settlement-item:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.settlement-flow {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.95rem;
+}
+
+.settlement-participant {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.settlement-arrow {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  background-color: #f1f5f9;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.settlement-amount-badge {
+  display: flex;
+  align-items: center;
+}
+
+.settlement-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  background-color: #f8fafc;
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.settled-state-box {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+}
+
+.settled-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: #22c55e;
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.settled-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.settled-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #15803d;
+}
+
+.settled-subtitle {
+  font-size: 0.85rem;
+  color: #166534;
+}
+
+
