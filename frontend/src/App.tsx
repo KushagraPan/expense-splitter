@@ -64,9 +64,9 @@ export function App() {
         )}
 
         <aside className="architecture-note">
-          <strong>Architecture Invariant (Issue #2 Active):</strong>
+          <strong>Architecture Invariant (Issue #12 Active):</strong>
           <br />
-          <code>UI (GroupDashboard / GroupDetail)</code> ➔ <code>apiService (src/services/api.ts)</code> ➔ <code>mockStore (src/services/mockStore.ts)</code>
+          <code>UI (GroupDashboard / GroupDetail)</code> ➔ <code>apiService (src/services/api.ts)</code> ➔ <code>FastAPI REST Backend (/api)</code>
           <br />
           Navigation is lightweight and state-driven with browser hash sync (no heavy routing library overhead).
         </aside>
