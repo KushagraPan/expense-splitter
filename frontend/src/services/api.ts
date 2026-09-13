@@ -10,13 +10,15 @@
  */
 
 import type { Group, Member } from '../types';
-import { mockStore } from './mockStore';
+import { mockStore } from './mockStore.ts';
 
 export interface ApiService {
   getGroups(): Promise<Group[]>;
   getGroup(id: string): Promise<Group | null>;
   createGroup(input: { name: string; currency: string }): Promise<Group>;
   getMembers(groupId: string): Promise<Member[]>;
+  addMember(groupId: string, name: string): Promise<Member>;
+  deleteMember(groupId: string, memberId: string): Promise<void>;
 }
 
 /**
@@ -28,4 +30,6 @@ export const apiService: ApiService = {
   getGroup: (id: string) => mockStore.getGroup(id),
   createGroup: (input) => mockStore.createGroup(input),
   getMembers: (groupId: string) => mockStore.getMembers(groupId),
+  addMember: (groupId: string, name: string) => mockStore.addMember(groupId, name),
+  deleteMember: (groupId: string, memberId: string) => mockStore.deleteMember(groupId, memberId),
 };

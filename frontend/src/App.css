@@ -300,3 +300,134 @@
   border-radius: 4px;
   font-family: monospace;
 }
+
+/* Issue #3 Styles: Member Management, Deletion Safety, Archived State */
+.badge-archived {
+  background-color: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.alert-archived {
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.error-banner {
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.error-banner-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.error-banner-message {
+  flex: 1;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.btn-dismiss-error {
+  background: none;
+  border: none;
+  color: #b91c1c;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.btn-dismiss-error:hover {
+  background-color: #fee2e2;
+}
+
+.member-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.member-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0.85rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.member-info {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.btn-delete-member {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  color: #dc2626;
+  background-color: #ffffff;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.btn-delete-member:hover:not(:disabled) {
+  background-color: #fef2f2;
+  border-color: #ef4444;
+}
+
+.btn-delete-member:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
+
+.add-member-section {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 1rem;
+  margin-top: 0.5rem;
+}
+
+.subsection-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.form-group-inline {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.form-input:disabled,
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
