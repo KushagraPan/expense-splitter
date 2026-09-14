@@ -2,8 +2,8 @@
 
 ## 1. Project Overview & Repository Context
 This repository contains the **Expense Splitter** application (DataTalksClub AI Dev Tools Zoomcamp — Module 2).
-- **Repository Root:** `D:\project directory\ai-devtools\expense-splitter` (current workspace).
-- **Strict Isolation:** Do NOT access, view, copy from, or modify any files outside this repository (specifically `flatmate-chore-manager`). This is an independent project.
+- **Repository Root:** The root of this repository.
+- **Strict Isolation:** Do NOT access, view, copy from, or modify any files outside this repository. This is an independent project.
 
 ---
 
