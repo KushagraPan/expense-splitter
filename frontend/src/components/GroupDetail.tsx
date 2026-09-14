@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { apiService } from '../services/api';
 import type { Group, Member, SplitMethod, Expense, NetBalance, SettlementSuggestion, Payment } from '../types';
 
@@ -73,6 +73,54 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
   const [paymentLoading, setPaymentLoading] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
+
+  // Persona identifier for no-auth prototype perspective switching
+  const [currentUserName, setCurrentUserName] = useState<string>(() => {
+    try {
+      return localStorage.getItem('expense_splitter_user_name') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const handleSelectUser = (userName: string) => {
+    setCurrentUserName(userName);
+    try {
+      localStorage.setItem('expense_splitter_user_name', userName);
+    } catch {
+      // ignore storage error
+    }
+  };
+
+  const memberNames = useMemo(() => {
+    return members.map((m) => m.name.trim()).filter(Boolean);
+  }, [members]);
+
+  const effectiveUserName = useMemo(() => {
+    if (currentUserName && memberNames.includes(currentUserName)) {
+      return currentUserName;
+    }
+    return memberNames[0] || '';
+  }, [currentUserName, memberNames]);
+
+  const userBalanceData = useMemo(() => {
+    if (!effectiveUserName) return null;
+    const found = balances.find(
+      (b) => b.member_name.toLowerCase() === effectiveUserName.toLowerCase()
+    );
+    if (found) return found;
+    return {
+      member_id: '',
+      member_name: effectiveUserName,
+      net_balance: 0,
+      paid_amount: 0,
+      owed_amount: 0,
+    };
+  }, [effectiveUserName, balances]);
+
+  const totalGroupExpenses = useMemo(() => {
+    return expenses.reduce((sum, e) => sum + (typeof e.amount === 'number' ? e.amount : 0), 0);
+  }, [expenses]);
 
   useEffect(() => {
     let ignore = false;
@@ -756,6 +804,19 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
             </span>
             <span className="meta-id">ID: {group.id}</span>
           </div>
+
+          <div className="detail-header-stats-row">
+            <div className="header-stat-card">
+              <span className="stat-card-label">Total Spend</span>
+              <span className="stat-card-value">
+                {group.currency} {totalGroupExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="header-stat-card">
+              <span className="stat-card-label">Expenses</span>
+              <span className="stat-card-value">{expenses.length}</span>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -817,9 +878,30 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
       )}
 
       {/* Member Management Section (Issue #3) */}
-      <section className="card">
-        <div className="section-header">
-          <h3 className="card-title">Members ({members.length})</h3>
+      <section className="card members-card">
+        <div className="section-header-between">
+          <div className="section-title-group">
+            <h3 className="card-title">Members</h3>
+            <span
+              className="badge badge-count badge-members-pill"
+              aria-label={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}
+            >
+              <svg
+                className="badge-count-icon"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                width="13"
+                height="13"
+                aria-hidden="true"
+              >
+                <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+              </svg>
+              <strong className="badge-count-num">{members.length}</strong>
+              <span className="badge-count-label">
+                {members.length === 1 ? 'member' : 'members'}
+              </span>
+            </span>
+          </div>
         </div>
 
         {actionError && (
@@ -838,65 +920,61 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         )}
 
         {members.length === 0 ? (
-          <p className="empty-state-text">No members in this group yet.</p>
+          <p className="empty-state-text">No members in this group yet. Add a member to get started.</p>
         ) : (
-          <ul className="member-list">
+          <div className="members-compact-grid">
             {members.map((member) => (
-              <li key={member.id} className="member-item">
-                <div className="member-info">
-                  <span
-                    className="member-avatar"
-                    style={{ background: getAvatarBackground(member.name) }}
-                  >
-                    {member.name.charAt(0).toUpperCase()}
-                  </span>
-                  <span className="member-name">{member.name}</span>
-                </div>
+              <div key={member.id} className="member-compact-chip">
+                <span
+                  className="member-avatar"
+                  style={{ background: getAvatarBackground(member.name) }}
+                  aria-hidden="true"
+                >
+                  {member.name.charAt(0).toUpperCase()}
+                </span>
+                <span className="member-compact-name">{member.name}</span>
                 {!isArchived && (
                   <button
                     type="button"
-                    className="btn-delete-member"
+                    className="btn-compact-delete-member"
                     onClick={() => handleDeleteMember(member.id)}
                     disabled={actionLoading}
                     title={`Delete ${member.name}`}
                     aria-label={`Delete ${member.name}`}
                   >
-                    Delete
+                    ×
                   </button>
                 )}
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
 
         {/* Add Member Form */}
         {!isArchived && (
-          <div className="add-member-section">
-            <h4 className="subsection-title">Add Member</h4>
-            <form onSubmit={handleAddMember} className="add-member-form">
-              <div className="form-group-inline">
-                <input
-                  type="text"
-                  placeholder="Enter member name..."
-                  value={newMemberName}
-                  onChange={(e) => {
-                    setNewMemberName(e.target.value);
-                    if (actionError) setActionError(null);
-                  }}
-                  disabled={actionLoading}
-                  className="form-input"
-                  aria-label="New member name"
-                />
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="btn-primary"
-                >
-                  {actionLoading ? 'Adding...' : 'Add Member'}
-                </button>
-              </div>
-            </form>
-          </div>
+          <form onSubmit={handleAddMember} className="add-member-compact-form">
+            <div className="add-member-input-wrap">
+              <input
+                type="text"
+                placeholder="Add member name..."
+                value={newMemberName}
+                onChange={(e) => {
+                  setNewMemberName(e.target.value);
+                  if (actionError) setActionError(null);
+                }}
+                disabled={actionLoading}
+                className="form-input member-compact-input"
+                aria-label="New member name"
+              />
+              <button
+                type="submit"
+                disabled={actionLoading || !newMemberName.trim()}
+                className="btn-primary btn-compact-add"
+              >
+                {actionLoading ? 'Adding...' : '+ Add Member'}
+              </button>
+            </div>
+          </form>
         )}
       </section>
 
@@ -1345,10 +1423,13 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                 return (
                   <div key={exp.id} className="expense-card">
                     <div className="expense-card-header">
+                      <div className="expense-feed-icon-wrap" aria-hidden="true">
+                        <span className="expense-feed-icon">🧾</span>
+                      </div>
                       <div className="expense-primary-info">
                         <h4 className="expense-title">{exp.title}</h4>
                         <div className="expense-meta-row">
-                          <span className="expense-date">{exp.expense_date}</span>
+                          <span className="expense-date">{formatDisplayDate(exp.expense_date)}</span>
                           <span className="meta-separator">•</span>
                           <span className="expense-payer">
                             Paid by <strong>{payerNames}</strong>
@@ -1505,10 +1586,123 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         </div>
       </section>
 
-      {/* Net Balances Section (Issue #6) */}
-      <section className="card">
+      {/* Section 4: Your Balance (Personal Perspective Card) */}
+      <section className="card your-balance-card">
+        <div className="your-balance-header">
+          <div className="your-balance-title-group">
+            <div className="section-eyebrow">YOUR PERSPECTIVE</div>
+            <h3 className="card-title">Your Balance</h3>
+          </div>
+
+          {memberNames.length > 0 && (
+            <div
+              className="hero-persona-selector detail-persona-selector"
+              title="Select member to view your personal perspective"
+            >
+              <span
+                className="persona-avatar member-avatar"
+                style={{ background: getAvatarBackground(effectiveUserName) }}
+                aria-hidden="true"
+              >
+                {effectiveUserName ? effectiveUserName.charAt(0).toUpperCase() : '?'}
+              </span>
+              <label htmlFor="detail-viewing-as-select" className="persona-label">
+                Viewing as:
+              </label>
+              <select
+                id="detail-viewing-as-select"
+                className="persona-select"
+                value={effectiveUserName}
+                onChange={(e) => handleSelectUser(e.target.value)}
+                aria-label="View group detail as member"
+              >
+                {memberNames.map((mName) => (
+                  <option key={mName} value={mName}>
+                    {mName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {members.length === 0 ? (
+          <p className="empty-state-text">Add members above to see individual balances.</p>
+        ) : userBalanceData && (
+          <div className="your-balance-content">
+            <div className="your-balance-hero">
+              <div className="your-balance-amount-row">
+                <span
+                  className={`your-balance-figure ${
+                    userBalanceData.net_balance > 0.005
+                      ? 'balance-figure-positive'
+                      : userBalanceData.net_balance < -0.005
+                      ? 'balance-figure-negative'
+                      : 'balance-figure-zero'
+                  }`}
+                >
+                  {userBalanceData.net_balance > 0.005
+                    ? `+${group.currency} ${userBalanceData.net_balance.toFixed(2)}`
+                    : userBalanceData.net_balance < -0.005
+                    ? `-${group.currency} ${Math.abs(userBalanceData.net_balance).toFixed(2)}`
+                    : `${group.currency} 0.00`}
+                </span>
+                <span
+                  className={`your-balance-pill ${
+                    userBalanceData.net_balance > 0.005
+                      ? 'pill-positive'
+                      : userBalanceData.net_balance < -0.005
+                      ? 'pill-negative'
+                      : 'pill-zero'
+                  }`}
+                >
+                  {userBalanceData.net_balance > 0.005
+                    ? '↗ You are owed'
+                    : userBalanceData.net_balance < -0.005
+                    ? '↘ You owe'
+                    : '✓ Settled up'}
+                </span>
+              </div>
+
+              <p className="your-balance-summary">
+                {userBalanceData.net_balance > 0.005
+                  ? `Overall in this group, other members owe ${effectiveUserName} ${group.currency} ${userBalanceData.net_balance.toFixed(2)}.`
+                  : userBalanceData.net_balance < -0.005
+                  ? `Overall in this group, ${effectiveUserName} owes ${group.currency} ${Math.abs(userBalanceData.net_balance).toFixed(2)} to other members.`
+                  : `${effectiveUserName} is completely settled up in this group! No outstanding balance.`}
+              </p>
+
+              {userBalanceData.paid_amount !== undefined && userBalanceData.owed_amount !== undefined && (
+                <div className="your-balance-breakdown">
+                  <div className="breakdown-stat">
+                    <span className="breakdown-stat-label">Total paid by you</span>
+                    <span className="breakdown-stat-value">
+                      {group.currency} {userBalanceData.paid_amount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="breakdown-divider" aria-hidden="true">•</div>
+                  <div className="breakdown-stat">
+                    <span className="breakdown-stat-label">Your total share</span>
+                    <span className="breakdown-stat-value">
+                      {group.currency} {userBalanceData.owed_amount.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Section 5: Net Balances Section (Issue #6) */}
+      <section className="card net-balances-card">
         <div className="section-header">
-          <h3 className="card-title">Net Balances</h3>
+          <div className="section-title-group">
+            <h3 className="card-title">Net Balances</h3>
+            <p className="section-subtitle">
+              Overview of all member balances in {group.name}
+            </p>
+          </div>
         </div>
 
         {members.length === 0 ? (
@@ -1522,20 +1716,33 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                 let amountClass = 'balance-zero';
                 let formattedAmount = `${group.currency} 0.00`;
 
-                if (b.net_balance > 0) {
+                if (b.net_balance > 0.005) {
                   statusClass = 'badge-creditor';
                   statusLabel = 'Owed';
                   amountClass = 'balance-positive';
                   formattedAmount = `+${group.currency} ${b.net_balance.toFixed(2)}`;
-                } else if (b.net_balance < 0) {
+                } else if (b.net_balance < -0.005) {
                   statusClass = 'badge-debtor';
                   statusLabel = 'Owes';
                   amountClass = 'balance-negative';
                   formattedAmount = `-${group.currency} ${Math.abs(b.net_balance).toFixed(2)}`;
                 }
 
+                const isCurrentUser =
+                  effectiveUserName &&
+                  b.member_name.toLowerCase() === effectiveUserName.toLowerCase();
+
                 return (
-                  <div key={b.member_id} className="balance-item">
+                  <div
+                    key={b.member_id}
+                    className={`balance-item ${
+                      b.net_balance > 0.005
+                        ? 'balance-item-creditor'
+                        : b.net_balance < -0.005
+                        ? 'balance-item-debtor'
+                        : 'balance-item-settled'
+                    } ${isCurrentUser ? 'balance-item-current-user' : ''}`}
+                  >
                     <div className="balance-member-info">
                       <span
                         className="member-avatar"
@@ -1544,10 +1751,13 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                         {b.member_name.charAt(0).toUpperCase()}
                       </span>
                       <div className="balance-name-group">
-                        <span className="balance-member-name">{b.member_name}</span>
+                        <div className="balance-name-row">
+                          <span className="balance-member-name">{b.member_name}</span>
+                          {isCurrentUser && <span className="badge-you-tag">You</span>}
+                        </div>
                         {b.paid_amount !== undefined && b.owed_amount !== undefined && (
                           <span className="balance-subtext">
-                            Paid: {group.currency} {b.paid_amount.toFixed(2)} • Owed: {group.currency} {b.owed_amount.toFixed(2)}
+                            Paid: {group.currency} {b.paid_amount.toFixed(2)} • Share: {group.currency} {b.owed_amount.toFixed(2)}
                           </span>
                         )}
                       </div>
