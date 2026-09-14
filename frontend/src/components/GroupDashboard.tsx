@@ -239,8 +239,11 @@ export function GroupDashboard({
 
   // Derive effective user identity cleanly
   const effectiveUserName = useMemo(() => {
-    if (currentUserName && allMemberNames.includes(currentUserName)) {
-      return currentUserName;
+    if (currentUserName) {
+      const match = allMemberNames.find(
+        (n) => n.toLowerCase() === currentUserName.toLowerCase()
+      );
+      if (match) return match;
     }
     return allMemberNames[0] || '';
   }, [currentUserName, allMemberNames]);
@@ -257,6 +260,28 @@ export function GroupDashboard({
 
     try {
       const created = await apiService.createGroup({ name: trimmed, currency });
+      const creatorName = (effectiveUserName || currentUserName).trim();
+      let newMembers: Member[] = [];
+      if (creatorName) {
+        try {
+          const addedMember = await apiService.addMember(created.id, creatorName);
+          newMembers = [addedMember];
+          if (!currentUserName) {
+            handleSelectUser(creatorName);
+          }
+        } catch {
+          // If adding member fails or already exists, fallback gracefully
+        }
+      }
+
+      setMembersMap((prev) => ({
+        ...prev,
+        [created.id]: newMembers,
+      }));
+      setBalancesMap((prev) => ({
+        ...prev,
+        [created.id]: [],
+      }));
       setGroups((prev) => [created, ...prev]);
       setName('');
       setCurrency('INR');
@@ -289,11 +314,36 @@ export function GroupDashboard({
     }
   }
 
+  // Member-scoped groups: only groups where effectiveUserName is enrolled
+  const memberScopedGroups = useMemo(() => {
+    if (!effectiveUserName) return groups;
+    return groups.filter((g) => {
+      const mems = membersMap[g.id] || [];
+      return mems.some((m) => m.name.toLowerCase() === effectiveUserName.toLowerCase());
+    });
+  }, [groups, membersMap, effectiveUserName]);
+
+  const activeGroups = useMemo(
+    () => memberScopedGroups.filter((g) => g.status === 'ACTIVE'),
+    [memberScopedGroups]
+  );
+  const archivedGroups = useMemo(
+    () => memberScopedGroups.filter((g) => g.status === 'ARCHIVED'),
+    [memberScopedGroups]
+  );
+
+  const displayedGroups =
+    activeTab === 'ACTIVE'
+      ? activeGroups
+      : activeTab === 'ARCHIVED'
+        ? archivedGroups
+        : memberScopedGroups;
+
   // Calculate Net Financial Position Hero:
   // Strictly separates currencies (never sums across INR, USD, EUR, etc.)
+  // Evaluated ONLY from the perspective and active groups of the selected member
   const heroData = useMemo(() => {
-    const activeGroups = groups.filter((g) => g.status === 'ACTIVE');
-    if (activeGroups.length === 0 || !effectiveUserName) {
+    if (!effectiveUserName) {
       const defaultPos: CurrencyPosition = {
         currency: 'INR',
         currencySymbol: '₹',
@@ -309,7 +359,7 @@ export function GroupDashboard({
       };
     }
 
-    // Partition active groups by their respective currency
+    // Partition member's active groups by their respective currency
     const groupsByCurrency: Record<string, Group[]> = {};
     for (const grp of activeGroups) {
       const curr = grp.currency || 'INR';
@@ -319,9 +369,38 @@ export function GroupDashboard({
       groupsByCurrency[curr].push(grp);
     }
 
-    const currencies = Object.keys(groupsByCurrency);
+    let currencies = Object.keys(groupsByCurrency);
 
-    // Compute independent net position for each currency
+    // If member has no active groups (e.g. all their groups are archived or none)
+    if (currencies.length === 0) {
+      const memberCurrencies = Array.from(
+        new Set(memberScopedGroups.map((g) => g.currency || 'INR'))
+      );
+      currencies = memberCurrencies.length > 0 ? memberCurrencies : ['INR'];
+
+      const isMulti = currencies.length > 1;
+      const positions: CurrencyPosition[] = currencies.map((curr) => ({
+        currency: curr,
+        currencySymbol: getCurrencySymbol(curr),
+        amount: 0,
+        state: 'ZERO' as const,
+        label: isMulti ? `ALL SQUARED AWAY (${curr})` : 'ALL SQUARED AWAY',
+        statusText: isMulti ? `Settled in ${curr}` : 'All balanced',
+        subtext:
+          memberScopedGroups.length > 0
+            ? 'All your groups are archived or settled'
+            : 'No active groups with outstanding balances',
+      }));
+
+      return {
+        isMultiCurrency: isMulti,
+        positions,
+      };
+    }
+
+    const isMulti = currencies.length > 1;
+
+    // Compute independent net position for each active currency
     const positions: CurrencyPosition[] = currencies.map((curr) => {
       const currGroups = groupsByCurrency[curr];
       const currSymbol = getCurrencySymbol(curr);
@@ -341,8 +420,6 @@ export function GroupDashboard({
           }
         }
       }
-
-      const isMulti = currencies.length > 1;
 
       if (currNet > 0.001) {
         return {
@@ -382,20 +459,10 @@ export function GroupDashboard({
     });
 
     return {
-      isMultiCurrency: currencies.length > 1,
+      isMultiCurrency: isMulti,
       positions,
     };
-  }, [groups, balancesMap, effectiveUserName]);
-
-  const activeGroups = groups.filter((g) => g.status === 'ACTIVE');
-  const archivedGroups = groups.filter((g) => g.status === 'ARCHIVED');
-
-  const displayedGroups =
-    activeTab === 'ACTIVE'
-      ? activeGroups
-      : activeTab === 'ARCHIVED'
-        ? archivedGroups
-        : groups;
+  }, [activeGroups, memberScopedGroups, balancesMap, effectiveUserName]);
 
   return (
     <div className="dashboard-container">
@@ -696,7 +763,7 @@ export function GroupDashboard({
                   className={`dashboard-tab ${activeTab === 'ALL' ? 'dashboard-tab-active' : ''}`}
                   onClick={() => setActiveTab('ALL')}
                 >
-                  All groups <span className="tab-count">{groups.length}</span>
+                  All groups <span className="tab-count">{memberScopedGroups.length}</span>
                 </button>
                 <button
                   type="button"
@@ -719,14 +786,19 @@ export function GroupDashboard({
               </div>
 
               <span className="groups-summary-count">
-                Showing {displayedGroups.length} of {groups.length} {groups.length === 1 ? 'group' : 'groups'}
+                Showing {displayedGroups.length} of {memberScopedGroups.length}{' '}
+                {memberScopedGroups.length === 1 ? 'group' : 'groups'}
               </span>
             </div>
 
             {/* Groups Grid with Lightly Refined Integrated Cards */}
             {displayedGroups.length === 0 ? (
               <div className="tab-empty-notice">
-                <p>No {activeTab.toLowerCase()} groups found.</p>
+                <p>
+                  {activeTab === 'ALL'
+                    ? 'No groups found for this member.'
+                    : `No ${activeTab.toLowerCase()} groups found.`}
+                </p>
               </div>
             ) : (
               <div className="groups-grid">
@@ -742,7 +814,7 @@ export function GroupDashboard({
                     : null;
 
                   // Determine user's balance state in this specific group
-                  let balanceState: 'POSITIVE' | 'NEGATIVE' | 'ZERO' | 'NONE' = 'ZERO';
+                  let balanceState: 'POSITIVE' | 'NEGATIVE' | 'ZERO' = 'ZERO';
                   let balanceTag = 'Settled';
                   let formattedBalance = `${group.currency} 0.00`;
 
@@ -765,11 +837,8 @@ export function GroupDashboard({
                       formattedBalance = `${group.currency} 0.00`;
                     }
                   } else {
-                    balanceState = 'NONE';
-                    const isMember = members.some(
-                      (m) => m.name.toLowerCase() === effectiveUserName.toLowerCase()
-                    );
-                    balanceTag = isMember ? 'Ready for expenses' : 'Not in group';
+                    balanceState = 'ZERO';
+                    balanceTag = 'Ready for expenses';
                     formattedBalance = `${group.currency} 0.00`;
                   }
 

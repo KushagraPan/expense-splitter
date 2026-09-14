@@ -162,18 +162,32 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     setActionError(null);
+    const trimmed = newMemberName.trim();
+    if (!trimmed) {
+      setActionError('Please enter a member name');
+      return;
+    }
+    if (members.some((m) => m.name.toLowerCase() === trimmed.toLowerCase())) {
+      setActionError('Member name must be unique within the group');
+      return;
+    }
     try {
       setActionLoading(true);
-      const created = await apiService.addMember(groupId, newMemberName);
+      const created = await apiService.addMember(groupId, trimmed);
       setMembers((prev) => [...prev, created]);
       setSelectedParticipants((prev) => [...prev, created.id]);
+      setExpensePayers((prev) => (prev.length > 0 ? prev : [{ member_id: created.id, amount: '' }]));
       setNewMemberName('');
-      const [updatedBalances, updatedSettlements] = await Promise.all([
-        apiService.getNetBalances(groupId),
-        apiService.getSettlementSuggestions(groupId),
-      ]);
-      setBalances(updatedBalances);
-      setSettlements(updatedSettlements);
+      try {
+        const [updatedBalances, updatedSettlements] = await Promise.all([
+          apiService.getNetBalances(groupId),
+          apiService.getSettlementSuggestions(groupId),
+        ]);
+        setBalances(updatedBalances);
+        setSettlements(updatedSettlements);
+      } catch {
+        // Balances refresh error shouldn't mask member addition
+      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to add member');
     } finally {
@@ -968,7 +982,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
               />
               <button
                 type="submit"
-                disabled={actionLoading || !newMemberName.trim()}
+                disabled={actionLoading}
                 className="btn-primary btn-compact-add"
               >
                 {actionLoading ? 'Adding...' : '+ Add Member'}
