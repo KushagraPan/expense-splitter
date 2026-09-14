@@ -5,7 +5,7 @@ all operations to the SQLAlchemy repository layer.
 """
 
 from app.database import SessionLocal, init_db
-from app.models import ExpenseModel, ExpenseShareModel, GroupModel, MemberModel, PaymentModel
+from app.models import ExpenseModel, ExpensePayerModel, ExpenseShareModel, GroupModel, MemberModel, PaymentModel
 from app.repository import SqlAlchemyRepository, seed_initial_data_if_empty
 from app.schemas import (
     CreateExpenseRequest,
@@ -34,6 +34,7 @@ class SqlAlchemyStore:
         init_db()
         with SessionLocal() as db:
             db.query(ExpenseShareModel).delete()
+            db.query(ExpensePayerModel).delete()
             db.query(ExpenseModel).delete()
             db.query(PaymentModel).delete()
             db.query(MemberModel).delete()

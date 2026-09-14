@@ -8,7 +8,7 @@ info:
     ### Domain Rules & Invariants:
     - **Groups & Lifecycle**: Groups operate in either `ACTIVE` or `ARCHIVED` status. An active group can only be archived when every member's net balance is exactly 0.00. Archived groups are read-only and reject all mutation operations with `403 Forbidden`. Groups can be reopened back to `ACTIVE` status. Groups are never permanently deleted.
     - **Members**: Placeholder members belong to a group and have unique names within the group. A member can only be deleted if they have zero financial history (not a payer, participant, or payment party).
-    - **Expenses & Splits**: Single-payer expenses support `EQUAL` and `EXACT` splits with participant subsets (the payer can be excluded from participants). `EQUAL` splits distribute remaining cent(s) sequentially starting from the first participant. `EXACT` splits require the sum of participant shares to equal the expense amount exactly.
+    - **Expenses & Splits**: Multiple-payer expenses support `EQUAL` and `EXACT` splits with participant subsets (the payer can be excluded from participants). `EQUAL` splits distribute remaining cent(s) sequentially starting from the first participant. `EXACT` splits require the sum of participant shares to equal the expense amount exactly.
     - **Derived Net Balances**: Net balances are calculated dynamically from active expenses and payments: `(Expenses Paid + Payments Sent) - (Expenses Owed + Payments Received)`. The global zero-sum invariant `sum(Net Balance) === 0.00` is maintained at all times.
     - **Simplified Debt Settlement**: Debtor-creditor matching produces a simplified settlement plan using no more than `N - 1` transactions for `N` members with non-zero balances using exact integer-cent arithmetic.
     - **Payments**: Historical cash transfer records document debt settlements. Mutating past expenses preserves historical payments, supporting debt inversion (reverse refunds).
@@ -259,9 +259,10 @@ paths:
         - Expenses
       summary: Create an expense
       description: |
-        Log a new single-payer expense in an active group.
+        Log a new multiple-payer expense in an active group.
         Supports EQUAL split (with deterministic sequential cent remainder allocation)
         and EXACT split (where the sum of participant shares must equal total amount).
+        Sum of payer amounts must strictly equal total amount.
       operationId: createExpense
       parameters:
         - $ref: '#/components/parameters/GroupId'
@@ -294,7 +295,7 @@ paths:
       tags:
         - Expenses
       summary: Retrieve an expense
-      description: Fetch full details and participant share breakdown of a single expense.
+      description: Fetch full details, payers, and participant share breakdown of a single expense.
       operationId: getExpense
       parameters:
         - $ref: '#/components/parameters/GroupId'
@@ -314,7 +315,7 @@ paths:
         - Expenses
       summary: Update an expense
       description: |
-        Modify an existing expense in an active group. All fields (title, amount, payer, participants, split method, notes)
+        Modify an existing expense in an active group. All fields (title, amount, payers, participants, split method, notes)
         can be edited. Recalculates participant shares and dynamically updates group balances.
       operationId: updateExpense
       parameters:
@@ -629,6 +630,47 @@ components:
           description: Name of the member to add (must be unique within the group)
           example: "Bob"
 
+    ExpensePayer:
+      type: object
+      required:
+        - expense_id
+        - member_id
+        - amount
+      properties:
+        expense_id:
+          type: string
+          description: Identifier of the associated expense
+          example: "exp-101"
+        member_id:
+          type: string
+          description: Identifier of the member who paid
+          example: "mem-1"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Monetary amount paid by this member (in group currency)
+          example: 700.00
+
+    CreateExpensePayerInput:
+      type: object
+      required:
+        - member_id
+        - amount
+      properties:
+        member_id:
+          type: string
+          description: Identifier of the paying group member
+          example: "mem-1"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Amount paid by this member (must be positive)
+          example: 700.00
+
     ExpenseShare:
       type: object
       required:
@@ -677,7 +719,7 @@ components:
         - group_id
         - title
         - amount
-        - payer_id
+        - payers
         - split_method
         - expense_date
         - created_at
@@ -704,10 +746,12 @@ components:
           multipleOf: 0.01
           description: Total expense amount (strictly greater than zero)
           example: 100.00
-        payer_id:
-          type: string
-          description: Member ID of the single person who paid the expense
-          example: "mem-1"
+        payers:
+          type: array
+          minItems: 1
+          description: Breakdown of member contributions who paid for this expense
+          items:
+            $ref: '#/components/schemas/ExpensePayer'
         split_method:
           $ref: '#/components/schemas/SplitMethod'
         expense_date:
@@ -746,7 +790,7 @@ components:
       required:
         - title
         - amount
-        - payer_id
+        - payers
         - split_method
       properties:
         title:
@@ -762,10 +806,12 @@ components:
           multipleOf: 0.01
           description: Total expense amount (must be positive)
           example: 100.00
-        payer_id:
-          type: string
-          description: Member ID of the member who paid
-          example: "mem-1"
+        payers:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CreateExpensePayerInput'
+          description: List of members who paid and their paid amounts. Sum of amounts must strictly equal total amount.
         split_method:
           $ref: '#/components/schemas/SplitMethod'
         expense_date:
@@ -789,7 +835,7 @@ components:
             type: string
           description: |
             Array of member IDs participating in the split.
-            Required when split_method is EQUAL. Payer may be excluded.
+            Required when split_method is EQUAL. Payers may be excluded.
           example: ["mem-1", "mem-2", "mem-3"]
         shares:
           type: array
@@ -804,7 +850,7 @@ components:
       required:
         - title
         - amount
-        - payer_id
+        - payers
         - split_method
       properties:
         title:
@@ -820,10 +866,12 @@ components:
           multipleOf: 0.01
           description: Total expense amount (must be positive)
           example: 120.00
-        payer_id:
-          type: string
-          description: Member ID of the member who paid
-          example: "mem-1"
+        payers:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CreateExpensePayerInput'
+          description: List of members who paid and their paid amounts. Sum of amounts must strictly equal total amount.
         split_method:
           $ref: '#/components/schemas/SplitMethod'
         expense_date:

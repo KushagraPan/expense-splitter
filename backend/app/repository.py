@@ -19,13 +19,17 @@ from app.domain.calculations import (
     calculate_net_balances,
     calculate_settlement_suggestions,
 )
-from app.models import ExpenseModel, ExpenseShareModel, GroupModel, MemberModel, PaymentModel
+from app.models import ExpenseModel, ExpensePayerModel, ExpenseShareModel, GroupModel, MemberModel, PaymentModel
 from app.schemas import (
+    CreateExpensePayerInput,
     CreateExpenseRequest,
+    CreateExpenseShareInput,
     CreateGroupRequest,
     CreateMemberRequest,
     CreatePaymentRequest,
     Expense,
+    ExpensePayer,
+    ExpenseShare,
     Group,
     GroupStatus,
     Member,
@@ -230,8 +234,9 @@ class SqlAlchemyRepository:
             )
         # Check financial history in expenses and payments
         has_payer_expense = (
-            self.db.query(ExpenseModel)
-            .filter(ExpenseModel.group_id == group_id, ExpenseModel.payer_id == member_id)
+            self.db.query(ExpensePayerModel)
+            .join(ExpenseModel, ExpensePayerModel.expense_id == ExpenseModel.id)
+            .filter(ExpenseModel.group_id == group_id, ExpensePayerModel.member_id == member_id)
             .first()
             is not None
         )
@@ -292,17 +297,17 @@ class SqlAlchemyRepository:
             )
         return exp
 
-    def _validate_and_build_shares(
+    def _validate_and_build_payers_and_shares(
         self,
         expense_id: str,
         group_id: str,
         title: str,
         amount: float,
-        payer_id: str,
+        payers_input: list[CreateExpensePayerInput],
         split_method: SplitMethod,
         participants: list[str] | None,
-        shares_input: list | None,
-    ) -> tuple[str, list[ExpenseShareModel]]:
+        shares_input: list[CreateExpenseShareInput] | None,
+    ) -> tuple[str, list[ExpensePayerModel], list[ExpenseShareModel]]:
         trimmed_title = title.strip()
         if not trimmed_title:
             raise HTTPException(
@@ -315,12 +320,54 @@ class SqlAlchemyRepository:
                 detail="Expense amount must be greater than zero",
             )
         group_member_ids = {m.id for m in self.list_members(group_id)}
-        if payer_id not in group_member_ids:
+
+        # Validate payers
+        if not payers_input:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Payer must belong to the group",
+                detail="At least one payer is required",
             )
 
+        total_cents = round(amount * 100)
+        payer_sum_cents = 0
+        payer_models: list[ExpensePayerModel] = []
+        seen_payers: set[str] = set()
+
+        for p in payers_input:
+            if p.member_id not in group_member_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid payer: member does not belong to group",
+                )
+            if p.member_id in seen_payers:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Duplicate payer in payer list",
+                )
+            seen_payers.add(p.member_id)
+
+            if p.amount <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Payer amount must be greater than zero",
+                )
+            p_cents = round(p.amount * 100)
+            payer_sum_cents += p_cents
+            payer_models.append(
+                ExpensePayerModel(
+                    expense_id=expense_id,
+                    member_id=p.member_id,
+                    amount_cents=p_cents,
+                )
+            )
+
+        if payer_sum_cents != total_cents:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Sum of payer amounts ({payer_sum_cents / 100:.2f}) must equal expense amount ({total_cents / 100:.2f})",
+            )
+
+        # Validate shares
         share_models: list[ExpenseShareModel] = []
         if split_method == SplitMethod.EQUAL:
             if not participants:
@@ -328,8 +375,8 @@ class SqlAlchemyRepository:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="At least one participant is required",
                 )
-            for p in participants:
-                if p not in group_member_ids:
+            for p_id in participants:
+                if p_id not in group_member_ids:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Invalid participant: member does not belong to group",
@@ -349,7 +396,6 @@ class SqlAlchemyRepository:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="At least one participant is required",
                 )
-            total_cents = round(amount * 100)
             sum_cents = 0
             for s in shares_input:
                 if s.member_id not in group_member_ids:
@@ -382,7 +428,7 @@ class SqlAlchemyRepository:
                 detail=f"Unsupported split method '{split_method}'",
             )
 
-        return trimmed_title, share_models
+        return trimmed_title, payer_models, share_models
 
     def create_expense(self, group_id: str, req: CreateExpenseRequest) -> Expense:
         group = self._get_group_model(group_id)
@@ -392,12 +438,12 @@ class SqlAlchemyRepository:
                 detail="Group is archived and read-only",
             )
         expense_id = _generate_id("exp")
-        title, shares = self._validate_and_build_shares(
+        title, payers, shares = self._validate_and_build_payers_and_shares(
             expense_id=expense_id,
             group_id=group_id,
             title=req.title,
             amount=req.amount,
-            payer_id=req.payer_id,
+            payers_input=req.payers,
             split_method=req.split_method,
             participants=req.participants,
             shares_input=req.shares,
@@ -408,13 +454,13 @@ class SqlAlchemyRepository:
             group_id=group_id,
             title=title,
             amount_cents=round(req.amount * 100),
-            payer_id=req.payer_id,
             split_method=req.split_method.value,
             expense_date=exp_date,
             category=req.category.strip() if req.category else None,
             notes=req.notes.strip() if req.notes else None,
             created_at=_now_iso(),
             updated_at=None,
+            payers=payers,
             shares=shares,
         )
         self.db.add(expense)
@@ -430,12 +476,12 @@ class SqlAlchemyRepository:
                 detail="Group is archived and read-only",
             )
         existing = self._get_expense_model(group_id, expense_id)
-        title, new_shares = self._validate_and_build_shares(
+        title, new_payers, new_shares = self._validate_and_build_payers_and_shares(
             expense_id=expense_id,
             group_id=group_id,
             title=req.title,
             amount=req.amount,
-            payer_id=req.payer_id,
+            payers_input=req.payers,
             split_method=req.split_method,
             participants=req.participants,
             shares_input=req.shares,
@@ -443,12 +489,16 @@ class SqlAlchemyRepository:
         exp_date = req.expense_date.strip() if req.expense_date and req.expense_date.strip() else existing.expense_date
         existing.title = title
         existing.amount_cents = round(req.amount * 100)
-        existing.payer_id = req.payer_id
         existing.split_method = req.split_method.value
         existing.expense_date = exp_date
         existing.category = req.category.strip() if req.category else None
         existing.notes = req.notes.strip() if req.notes else None
         existing.updated_at = _now_iso()
+
+        # Update payers: clear existing and re-populate
+        existing.payers.clear()
+        for p in new_payers:
+            existing.payers.append(p)
 
         # Update shares: clear existing and re-populate
         existing.shares.clear()

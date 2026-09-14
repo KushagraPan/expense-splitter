@@ -8,7 +8,7 @@ from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.schemas import Expense, ExpenseShare, Group, GroupStatus, Member, Payment, SplitMethod
+from app.schemas import Expense, ExpensePayer, ExpenseShare, Group, GroupStatus, Member, Payment, SplitMethod
 
 
 class GroupModel(Base):
@@ -82,12 +82,6 @@ class ExpenseModel(Base):
     )
     title: Mapped[str] = mapped_column(String(100), nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
-    payer_id: Mapped[str] = mapped_column(
-        String(64),
-        ForeignKey("members.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
     split_method: Mapped[str] = mapped_column(String(20), nullable=False)
     expense_date: Mapped[str] = mapped_column(String(20), nullable=False)
     category: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -96,7 +90,11 @@ class ExpenseModel(Base):
     updated_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     group: Mapped["GroupModel"] = relationship(back_populates="expenses")
-    payer: Mapped["MemberModel"] = relationship(foreign_keys=[payer_id])
+    payers: Mapped[list["ExpensePayerModel"]] = relationship(
+        back_populates="expense",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
     shares: Mapped[list["ExpenseShareModel"]] = relationship(
         back_populates="expense",
         cascade="all, delete-orphan",
@@ -109,7 +107,7 @@ class ExpenseModel(Base):
             group_id=self.group_id,
             title=self.title,
             amount=round(self.amount_cents / 100.0, 2),
-            payer_id=self.payer_id,
+            payers=[p.to_schema() for p in self.payers],
             split_method=SplitMethod(self.split_method),
             expense_date=self.expense_date,
             category=self.category,
@@ -117,6 +115,35 @@ class ExpenseModel(Base):
             created_at=self.created_at,
             updated_at=self.updated_at,
             shares=[s.to_schema() for s in self.shares],
+        )
+
+
+class ExpensePayerModel(Base):
+    __tablename__ = "expense_payers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    expense_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("expenses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    member_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("members.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    expense: Mapped["ExpenseModel"] = relationship(back_populates="payers")
+    member: Mapped["MemberModel"] = relationship(foreign_keys=[member_id])
+
+    def to_schema(self) -> ExpensePayer:
+        return ExpensePayer(
+            expense_id=self.expense_id,
+            member_id=self.member_id,
+            amount=round(self.amount_cents / 100.0, 2),
         )
 
 

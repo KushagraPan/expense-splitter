@@ -2174,5 +2174,672 @@
   border: 1px solid #e2e8f0;
 }
 
+/* ==========================================================================
+   Iteration 2: Multiple Payers & Redesigned Expense Flow Styles
+   ========================================================================== */
+.expense-form-section {
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid #e2e8f0;
+}
 
+.expense-form-section:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0;
+}
 
+.section-heading-block {
+  margin-bottom: 0.75rem;
+}
+
+.form-section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 0.25rem 0;
+}
+
+.form-section-subtitle {
+  font-size: 0.825rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.participants-heading-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+/* Payers Form Config */
+.payers-config-section {
+  margin-bottom: 1.25rem;
+}
+
+.payers-list-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.payer-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background-color: #f8fafc;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.payer-select-col {
+  flex: 1;
+}
+
+.payer-amount-col {
+  width: 170px;
+}
+
+.payer-amount-col .input-with-addon {
+  width: 100%;
+}
+
+.btn-remove-row {
+  background: none;
+  border: 1px solid #e2e8f0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.btn-remove-row:hover {
+  background-color: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.payer-actions-bar {
+  margin-top: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.btn-add-payer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #2563eb;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-add-payer:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+/* Split Method Toggle */
+.split-method-toggle {
+  display: inline-flex;
+  background-color: #f1f5f9;
+  padding: 0.25rem;
+  border-radius: 8px;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.btn-split-toggle {
+  background: none;
+  border: none;
+  padding: 0.4rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #64748b;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-split-toggle.active {
+  background-color: #ffffff;
+  color: #1e293b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.split-method-primary-text {
+  font-size: 0.9rem;
+  color: #1e293b;
+  margin: 0 0 0.25rem 0;
+}
+
+.split-method-secondary-text {
+  font-size: 0.825rem;
+  color: #64748b;
+  margin: 0 0 0.75rem 0;
+}
+
+.equal-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.equal-share-amount {
+  font-weight: 700;
+}
+
+/* Live Feedback Boxes */
+.live-feedback-box {
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-top: 0.5rem;
+}
+
+.feedback-matched {
+  background-color: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.feedback-under {
+  background-color: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.feedback-over {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+/* Redesigned Expense Details Breakdown */
+.expense-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .expense-details-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.expense-payers-section,
+.expense-shares-section {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.payers-breakdown-title,
+.shares-breakdown-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+  margin: 0 0 0.35rem 0;
+}
+
+.payers-detail-list,
+.shares-detail-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.payer-detail-item,
+.share-detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.3rem 0.5rem;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 0.825rem;
+}
+
+.payer-member-name,
+.share-member-name {
+  font-weight: 500;
+  color: #334155;
+}
+
+.payer-paid-amount {
+  font-weight: 600;
+  color: #15803d;
+}
+
+.share-owed-amount {
+  font-weight: 600;
+  color: #b91c1c;
+}
+
+.payers-total-summary,
+.shares-total-summary {
+  font-size: 0.8rem;
+  color: #64748b;
+  text-align: right;
+  padding-top: 0.35rem;
+  border-top: 1px dashed #e2e8f0;
+}
+
+/* Resulting Contribution Preview */
+.expense-impact-section {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.impact-breakdown-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+  margin: 0 0 0.5rem 0;
+}
+
+.impact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.5rem;
+}
+
+.impact-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.65rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.impact-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.impact-details {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.impact-badge {
+  align-self: flex-start;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  margin-top: 0.15rem;
+}
+
+.impact-credit {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.impact-debt {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.impact-zero {
+  background-color: #f1f5f9;
+  color: #64748b;
+}
+
+/* ==========================================================================
+   Iteration 3: Settle Up, Payment Suggestions & Flow Redesign
+   ========================================================================== */
+
+.settle-up-section .section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.section-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.section-subtitle {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.section-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.btn-info-toggle {
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.btn-info-toggle:hover {
+  background-color: #e2e8f0;
+  color: #1e293b;
+}
+
+.btn-record-standalone {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.85rem;
+}
+
+/* How It Works Explanation Box */
+.how-it-works-box {
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 0.875rem 1.125rem;
+  margin-bottom: 1.25rem;
+}
+
+.how-it-works-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #1e40af;
+  margin-bottom: 0.35rem;
+}
+
+.how-it-works-icon {
+  font-size: 1rem;
+}
+
+.how-it-works-box p {
+  font-size: 0.825rem;
+  color: #1e3a8a;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* All Settled State */
+.all-settled-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.5rem 1.75rem;
+  background-color: #f0fdf4;
+  border: 1.5px dashed #86efac;
+  border-radius: 12px;
+}
+
+.all-settled-icon {
+  font-size: 2.25rem;
+  line-height: 1;
+}
+
+.all-settled-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.all-settled-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #15803d;
+}
+
+.all-settled-description {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #166534;
+}
+
+/* Settlement Grid & Cards */
+.settlement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.settlement-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1.125rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  transition: all 0.15s ease-in-out;
+}
+
+.settlement-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+}
+
+.settlement-card-flow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.participant-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 0.25rem 0.65rem 0.25rem 0.35rem;
+  max-width: 42%;
+}
+
+.participant-chip .member-avatar {
+  width: 24px;
+  height: 24px;
+  font-size: 0.75rem;
+}
+
+.participant-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  color: #64748b;
+}
+
+.flow-text {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.flow-arrow {
+  font-size: 0.9rem;
+  color: #0284c7;
+}
+
+.settlement-card-amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.6rem 0.85rem;
+  background-color: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #f1f5f9;
+}
+
+.amount-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.amount-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.settlement-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.btn-pay-full {
+  flex: 1.2;
+  font-size: 0.825rem;
+  font-weight: 600;
+  padding: 0.45rem 0.6rem;
+  text-align: center;
+}
+
+.btn-pay-partial {
+  flex: 1;
+  font-size: 0.825rem;
+  font-weight: 500;
+  padding: 0.45rem 0.6rem;
+  text-align: center;
+}
+
+/* Modal Form Styles for Standalone & Dynamic Calc */
+.payment-standalone-selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.form-label-row .form-label {
+  margin-bottom: 0;
+}
+
+.badge-full-settlement {
+  background-color: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+
+.form-input-readonly {
+  background-color: #f1f5f9;
+  cursor: default;
+  color: #334155;
+  font-weight: 600;
+}
+
+/* Dynamic Live Calculation Feedback Box */
+.payment-live-calc-box {
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.825rem;
+  line-height: 1.4;
+  transition: all 0.15s ease-in-out;
+}
+
+.calc-neutral {
+  background-color: #f8fafc;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+.calc-partial {
+  background-color: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.calc-full {
+  background-color: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.calc-error {
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}

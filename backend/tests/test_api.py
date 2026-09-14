@@ -110,7 +110,7 @@ async def test_expenses_and_remainder_allocation():
             json={
                 "title": "Buffet",
                 "amount": 100.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 100.00}],
                 "split_method": "EQUAL",
                 "participants": [m1, m2, m3],
             },
@@ -128,7 +128,7 @@ async def test_expenses_and_remainder_allocation():
             json={
                 "title": "Gift for Alice",
                 "amount": 50.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 50.00}],
                 "split_method": "EQUAL",
                 "participants": [m2, m3],
             },
@@ -144,7 +144,7 @@ async def test_expenses_and_remainder_allocation():
             json={
                 "title": "Cab",
                 "amount": 100.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 100.00}],
                 "split_method": "EXACT",
                 "shares": [
                     {"member_id": m2, "owed_amount": 40.00},
@@ -160,7 +160,7 @@ async def test_expenses_and_remainder_allocation():
             json={
                 "title": "Cab",
                 "amount": 100.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 100.00}],
                 "split_method": "EXACT",
                 "shares": [
                     {"member_id": m2, "owed_amount": 40.00},
@@ -178,7 +178,7 @@ async def test_expenses_and_remainder_allocation():
             json={
                 "title": "Cab (Updated)",
                 "amount": 100.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 100.00}],
                 "split_method": "EXACT",
                 "shares": [
                     {"member_id": m2, "owed_amount": 50.00},
@@ -209,7 +209,7 @@ async def test_balances_and_settlements_and_payments():
             json={
                 "title": "Hotel Room",
                 "amount": 100.00,
-                "payer_id": m_alice,
+                "payers": [{"member_id": m_alice, "amount": 100.00}],
                 "split_method": "EXACT",
                 "shares": [{"member_id": m_bob, "owed_amount": 100.00}],
             },
@@ -339,7 +339,7 @@ async def test_balances_and_settlements_and_payments():
             json={
                 "title": "Snacks",
                 "amount": 20.00,
-                "payer_id": m_alice,
+                "payers": [{"member_id": m_alice, "amount": 20.00}],
                 "split_method": "EQUAL",
                 "participants": [m_alice, m_bob],
             },
@@ -363,7 +363,7 @@ async def test_debt_inversion_api_flow():
                 json={
                     "title": "Train",
                     "amount": 100.00,
-                    "payer_id": m_alice,
+                    "payers": [{"member_id": m_alice, "amount": 100.00}],
                     "split_method": "EXACT",
                     "shares": [{"member_id": m_bob, "owed_amount": 100.00}],
                 },

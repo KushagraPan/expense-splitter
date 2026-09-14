@@ -22,6 +22,17 @@ export interface Member {
   created_at: string;
 }
 
+export interface ExpensePayer {
+  expense_id: string;
+  member_id: string;
+  amount: number;
+}
+
+export interface CreateExpensePayerInput {
+  member_id: string;
+  amount: number;
+}
+
 export interface ExpenseShare {
   expense_id: string;
   member_id: string;
@@ -33,7 +44,7 @@ export interface Expense {
   group_id: string;
   title: string;
   amount: number;
-  payer_id: string;
+  payers: ExpensePayer[];
   split_method: SplitMethod;
   expense_date: string;
   category?: string;
@@ -46,7 +57,7 @@ export interface Expense {
 export interface CreateExpenseInput {
   title: string;
   amount: number;
-  payer_id: string;
+  payers: CreateExpensePayerInput[];
   split_method: SplitMethod;
   expense_date?: string;
   category?: string;

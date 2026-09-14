@@ -32,8 +32,9 @@ def calculate_net_balances(
         received_cents = 0
 
         for exp in expense_list:
-            if exp.payer_id == member.id:
-                paid_cents += round(exp.amount * 100)
+            for payer in exp.payers:
+                if payer.member_id == member.id:
+                    paid_cents += round(payer.amount * 100)
             for share in exp.shares:
                 if share.member_id == member.id:
                     owed_cents += round(share.owed_amount * 100)

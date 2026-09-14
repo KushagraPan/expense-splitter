@@ -5,7 +5,7 @@ Configures SQLite with foreign key constraints enabled via event listener.
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -51,5 +51,59 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db(target_engine: Engine | None = None) -> None:
-    """Initialize database tables."""
-    Base.metadata.create_all(bind=target_engine or engine)
+    """Initialize database tables with non-destructive schema migration."""
+    eng = target_engine or engine
+    Base.metadata.create_all(bind=eng)
+
+    # Non-destructive migration for SQLite when migrating from single-payer to multiple-payer model
+    try:
+        with eng.connect() as conn:
+            res = conn.execute(text("PRAGMA table_info(expenses)")).fetchall()
+            col_names = [row[1] for row in res]
+            if "payer_id" in col_names:
+                conn.execute(text("PRAGMA foreign_keys=OFF"))
+                conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS new_expenses (
+                            id VARCHAR(64) NOT NULL PRIMARY KEY,
+                            group_id VARCHAR(64) NOT NULL,
+                            title VARCHAR(100) NOT NULL,
+                            amount_cents INTEGER NOT NULL,
+                            split_method VARCHAR(20) NOT NULL,
+                            expense_date VARCHAR(20) NOT NULL,
+                            category VARCHAR(50),
+                            notes VARCHAR(255),
+                            created_at VARCHAR(64) NOT NULL,
+                            updated_at VARCHAR(64),
+                            FOREIGN KEY(group_id) REFERENCES groups (id) ON DELETE CASCADE
+                        )
+                        """
+                    )
+                )
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO new_expenses (id, group_id, title, amount_cents, split_method, expense_date, category, notes, created_at, updated_at)
+                        SELECT id, group_id, title, amount_cents, split_method, expense_date, category, notes, created_at, updated_at
+                        FROM expenses
+                        """
+                    )
+                )
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO expense_payers (expense_id, member_id, amount_cents)
+                        SELECT id, payer_id, amount_cents FROM expenses
+                        WHERE id NOT IN (SELECT DISTINCT expense_id FROM expense_payers)
+                        """
+                    )
+                )
+                conn.execute(text("DROP TABLE expenses"))
+                conn.execute(text("ALTER TABLE new_expenses RENAME TO expenses"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_group_id ON expenses (group_id)"))
+                conn.commit()
+                conn.execute(text("PRAGMA foreign_keys=ON"))
+    except Exception:
+        # If migration is not needed or already executed, ignore safely
+        pass

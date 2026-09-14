@@ -96,7 +96,7 @@ async def test_expense_error_cases():
             json={
                 "title": "New Title",
                 "amount": 20.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 20.00}],
                 "split_method": "EQUAL",
                 "participants": [m1, m2],
             },
@@ -113,7 +113,7 @@ async def test_expense_error_cases():
             json={
                 "title": "   ",
                 "amount": 50.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 50.00}],
                 "split_method": "EQUAL",
                 "participants": [m1, m2],
             },
@@ -126,7 +126,7 @@ async def test_expense_error_cases():
             json={
                 "title": "Zero Expense",
                 "amount": 0.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 0.00}],
                 "split_method": "EQUAL",
                 "participants": [m1, m2],
             },
@@ -138,7 +138,7 @@ async def test_expense_error_cases():
             json={
                 "title": "Negative Expense",
                 "amount": -10.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": -10.00}],
                 "split_method": "EQUAL",
                 "participants": [m1, m2],
             },
@@ -151,7 +151,7 @@ async def test_expense_error_cases():
             json={
                 "title": "Outsider",
                 "amount": 30.00,
-                "payer_id": "mem-stranger",
+                "payers": [{"member_id": "mem-stranger", "amount": 30.00}],
                 "split_method": "EQUAL",
                 "participants": [m1, m2],
             },
@@ -164,7 +164,7 @@ async def test_expense_error_cases():
             json={
                 "title": "Outsider Part",
                 "amount": 30.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 30.00}],
                 "split_method": "EQUAL",
                 "participants": [m1, "mem-stranger"],
             },
@@ -177,7 +177,7 @@ async def test_expense_error_cases():
             json={
                 "title": "Nobody",
                 "amount": 30.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 30.00}],
                 "split_method": "EQUAL",
                 "participants": [],
             },
@@ -190,7 +190,7 @@ async def test_expense_error_cases():
             json={
                 "title": "Negative Share",
                 "amount": 20.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 20.00}],
                 "split_method": "EXACT",
                 "shares": [
                     {"member_id": m1, "owed_amount": 30.00},
@@ -216,7 +216,7 @@ async def test_archived_group_immutability():
             json={
                 "title": "Lunch",
                 "amount": 40.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 40.00}],
                 "split_method": "EXACT",
                 "shares": [{"member_id": m2, "owed_amount": 40.00}],
             },
@@ -242,7 +242,7 @@ async def test_archived_group_immutability():
             json={
                 "title": "Coffee",
                 "amount": 5.00,
-                "payer_id": m1,
+                "payers": [{"member_id": m1, "amount": 5.00}],
                 "split_method": "EQUAL",
                 "participants": [m1],
             },
@@ -281,7 +281,7 @@ async def test_zero_history_rule_all_scenarios():
             json={
                 "title": "Movie",
                 "amount": 200.00,
-                "payer_id": m_payer,
+                "payers": [{"member_id": m_payer, "amount": 200.00}],
                 "split_method": "EXACT",
                 "shares": [{"member_id": m_part, "owed_amount": 200.00}],
             },

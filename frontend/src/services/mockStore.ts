@@ -3,7 +3,7 @@
  * Reference: product-spec.md, _docs/plan.md (Phase C)
  */
 
-import type { Group, Member, Expense, ExpenseShare, Payment, CreatePaymentInput, SplitMethod, CreateExpenseInput, NetBalance, SettlementSuggestion } from '../types/index.ts';
+import type { Group, Member, Expense, ExpensePayer, ExpenseShare, Payment, CreatePaymentInput, SplitMethod, CreateExpenseInput, NetBalance, SettlementSuggestion } from '../types/index.ts';
 import { calculateNetBalances, calculateSettlementSuggestions } from '../utils/calculations.ts';
 
 const STORAGE_KEY_GROUPS = 'expense_splitter_groups';
@@ -114,7 +114,9 @@ const SEEDED_EXPENSES: Expense[] = [
     group_id: 'grp-goa-2026',
     title: 'Beach Shack Dinner',
     amount: 1200,
-    payer_id: 'mem-1', // Alice paid
+    payers: [
+      { expense_id: 'exp-1', member_id: 'mem-1', amount: 1200 }, // Alice paid
+    ],
     split_method: 'EQUAL',
     expense_date: '2026-09-10',
     created_at: '2026-09-10T11:00:00Z',
@@ -413,7 +415,7 @@ export const mockStore = {
     const hasExpenseHistory = mockExpenses.some(
       (e) =>
         e.group_id === groupId &&
-        (e.payer_id === memberId ||
+        ((e.payers && e.payers.some((p) => p.member_id === memberId)) ||
           (e.shares && e.shares.some((s) => s.member_id === memberId)))
     );
 
@@ -436,6 +438,7 @@ export const mockStore = {
       .filter((e) => e.group_id === groupId)
       .map((e) => ({
         ...e,
+        payers: e.payers ? e.payers.map((p) => ({ ...p })) : [],
         shares: e.shares ? e.shares.map((s) => ({ ...s })) : undefined,
       }));
   },
@@ -445,6 +448,7 @@ export const mockStore = {
     if (!found) return null;
     return {
       ...found,
+      payers: found.payers ? found.payers.map((p) => ({ ...p })) : [],
       shares: found.shares ? found.shares.map((s) => ({ ...s })) : undefined,
     };
   },
@@ -474,6 +478,7 @@ export const mockStore = {
 
     return {
       ...newExpense,
+      payers: validated.payers.map((p) => ({ ...p })),
       shares: validated.shares.map((s) => ({ ...s })),
     };
   },
@@ -513,6 +518,7 @@ export const mockStore = {
 
     return {
       ...updatedExpense,
+      payers: validated.payers.map((p) => ({ ...p })),
       shares: validated.shares.map((s) => ({ ...s })),
     };
   },
@@ -633,7 +639,7 @@ function validateAndBuildExpenseData(
 ): {
   title: string;
   amount: number;
-  payer_id: string;
+  payers: ExpensePayer[];
   split_method: SplitMethod;
   expense_date: string;
   category?: string;
@@ -652,9 +658,43 @@ function validateAndBuildExpenseData(
   const totalCents = Math.round(input.amount * 100);
   const totalAmount = totalCents / 100;
 
-  const payer = groupMembers.find((m) => m.id === input.payer_id);
-  if (!payer) {
-    throw new Error('Invalid payer: member does not belong to group');
+  if (!input.payers || input.payers.length === 0) {
+    throw new Error('At least one payer is required');
+  }
+
+  let payerSumCents = 0;
+  const validatedPayers: ExpensePayer[] = [];
+  const seenPayers = new Set<string>();
+
+  for (const p of input.payers) {
+    const member = groupMembers.find((m) => m.id === p.member_id);
+    if (!member) {
+      throw new Error('Invalid payer: member does not belong to group');
+    }
+    if (seenPayers.has(p.member_id)) {
+      throw new Error('Duplicate payer in payer list');
+    }
+    seenPayers.add(p.member_id);
+
+    if (typeof p.amount !== 'number' || isNaN(p.amount) || p.amount <= 0) {
+      throw new Error('Payer amount must be greater than zero');
+    }
+
+    const pCents = Math.round(p.amount * 100);
+    payerSumCents += pCents;
+    validatedPayers.push({
+      expense_id: expenseId,
+      member_id: p.member_id,
+      amount: Number((pCents / 100).toFixed(2)),
+    });
+  }
+
+  if (payerSumCents !== totalCents) {
+    const sumFormatted = (payerSumCents / 100).toFixed(2);
+    const totalFormatted = (totalCents / 100).toFixed(2);
+    throw new Error(
+      `Sum of payer amounts (${sumFormatted}) must equal expense amount (${totalFormatted})`
+    );
   }
 
   if (input.notes && input.notes.length > 255) {
@@ -733,7 +773,7 @@ function validateAndBuildExpenseData(
   return {
     title: trimmedTitle,
     amount: totalAmount,
-    payer_id: input.payer_id,
+    payers: validatedPayers,
     split_method: input.split_method,
     expense_date: expenseDate,
     category: input.category?.trim() || undefined,

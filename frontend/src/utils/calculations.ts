@@ -29,8 +29,12 @@ export function calculateNetBalances(
 
     // Aggregate expenses
     for (const exp of expenses) {
-      if (exp.payer_id === member.id) {
-        paidCents += Math.round(exp.amount * 100);
+      if (exp.payers) {
+        for (const payer of exp.payers) {
+          if (payer.member_id === member.id) {
+            paidCents += Math.round(payer.amount * 100);
+          }
+        }
       }
       if (exp.shares) {
         for (const share of exp.shares) {

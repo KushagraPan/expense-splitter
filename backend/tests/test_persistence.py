@@ -9,9 +9,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, set_sqlite_pragma
-from app.models import ExpenseModel, ExpenseShareModel, GroupModel, MemberModel, PaymentModel
+from app.models import (
+    ExpenseModel,
+    ExpensePayerModel,
+    ExpenseShareModel,
+    GroupModel,
+    MemberModel,
+    PaymentModel,
+)
 from app.repository import SqlAlchemyRepository
 from app.schemas import (
+    CreateExpensePayerInput,
     CreateExpenseRequest,
     CreateGroupRequest,
     CreateMemberRequest,
@@ -59,7 +67,7 @@ def test_sqlite_foreign_keys_prevent_orphaned_members(temp_db):
         session.rollback()
 
 
-def test_sqlite_foreign_keys_prevent_orphaned_expenses(temp_db):
+def test_sqlite_foreign_keys_prevent_orphaned_expense_payers(temp_db):
     TestSession, _, _ = temp_db
     with TestSession() as session:
         group = GroupModel(
@@ -72,17 +80,24 @@ def test_sqlite_foreign_keys_prevent_orphaned_expenses(temp_db):
         session.add(group)
         session.commit()
 
-        bad_expense = ExpenseModel(
-            id="exp-bad",
+        exp = ExpenseModel(
+            id="exp-valid",
             group_id="grp-test",
             title="Dinner",
             amount_cents=5000,
-            payer_id="mem-non-existent",
             split_method="EQUAL",
             expense_date="2026-09-13",
             created_at="2026-09-13T00:00:00Z",
         )
-        session.add(bad_expense)
+        session.add(exp)
+        session.commit()
+
+        bad_payer = ExpensePayerModel(
+            expense_id="exp-valid",
+            member_id="mem-non-existent",
+            amount_cents=5000,
+        )
+        session.add(bad_payer)
         with pytest.raises(IntegrityError):
             session.commit()
         session.rollback()
@@ -101,7 +116,7 @@ def test_sqlite_group_cascade_delete(temp_db):
             CreateExpenseRequest(
                 title="Lunch",
                 amount=40.00,
-                payer_id=m1.id,
+                payers=[CreateExpensePayerInput(member_id=m1.id, amount=40.00)],
                 split_method=SplitMethod.EQUAL,
                 participants=[m1.id, m2.id],
             ),
@@ -119,6 +134,7 @@ def test_sqlite_group_cascade_delete(temp_db):
         assert session.query(GroupModel).count() == 1
         assert session.query(MemberModel).count() == 2
         assert session.query(ExpenseModel).count() == 1
+        assert session.query(ExpensePayerModel).count() == 1
         assert session.query(ExpenseShareModel).count() == 2
         assert session.query(PaymentModel).count() == 1
 
@@ -129,6 +145,7 @@ def test_sqlite_group_cascade_delete(temp_db):
         assert session.query(GroupModel).count() == 0
         assert session.query(MemberModel).count() == 0
         assert session.query(ExpenseModel).count() == 0
+        assert session.query(ExpensePayerModel).count() == 0
         assert session.query(ExpenseShareModel).count() == 0
         assert session.query(PaymentModel).count() == 0
 
@@ -146,7 +163,7 @@ def test_integer_cents_storage_in_db(temp_db):
             CreateExpenseRequest(
                 title="Coffee",
                 amount=19.99,
-                payer_id=m1.id,
+                payers=[CreateExpensePayerInput(member_id=m1.id, amount=19.99)],
                 split_method=SplitMethod.EXACT,
                 shares=[
                     {"member_id": m1.id, "owed_amount": 10.00},
@@ -159,6 +176,11 @@ def test_integer_cents_storage_in_db(temp_db):
         assert exp_row is not None
         assert exp_row.amount_cents == 1999
         assert isinstance(exp_row.amount_cents, int)
+
+        payer_rows = session.scalars(select(ExpensePayerModel)).all()
+        assert len(payer_rows) == 1
+        assert payer_rows[0].amount_cents == 1999
+        assert isinstance(payer_rows[0].amount_cents, int)
 
         share_rows = session.scalars(select(ExpenseShareModel).order_by(ExpenseShareModel.owed_amount_cents.desc())).all()
         assert len(share_rows) == 2
@@ -182,7 +204,7 @@ def test_persistence_across_sessions_and_reconnect(temp_db):
             CreateExpenseRequest(
                 title="Shinkansen",
                 amount=150.00,
-                payer_id=m1.id,
+                payers=[CreateExpensePayerInput(member_id=m1.id, amount=150.00)],
                 split_method=SplitMethod.EQUAL,
                 participants=[m1.id, m2.id],
             ),
@@ -216,6 +238,8 @@ def test_persistence_across_sessions_and_reconnect(temp_db):
         assert len(expenses) == 1
         assert expenses[0].title == "Shinkansen"
         assert expenses[0].amount == 150.00
+        assert len(expenses[0].payers) == 1
+        assert expenses[0].payers[0].amount == 150.00
 
         payments = repo2.list_payments(gid)
         assert len(payments) == 1
@@ -238,7 +262,7 @@ def test_persistence_across_sessions_and_reconnect(temp_db):
 
 def test_derived_data_is_never_stored_as_table_columns():
     """Verify that NetBalance and SettlementSuggestion are not table columns."""
-    for model in [GroupModel, MemberModel, ExpenseModel, ExpenseShareModel, PaymentModel]:
+    for model in [GroupModel, MemberModel, ExpenseModel, ExpensePayerModel, ExpenseShareModel, PaymentModel]:
         column_names = {c.name for c in model.__table__.columns}
         assert "net_balance" not in column_names
         assert "settlement_suggestion" not in column_names
@@ -281,7 +305,6 @@ def test_sqlite_expense_shares_foreign_key_member(temp_db):
             group_id="grp-fks",
             title="Shared Item",
             amount_cents=2000,
-            payer_id="mem-valid-payer",
             split_method="EQUAL",
             expense_date="2026-09-13",
             created_at="2026-09-13T00:00:00Z",
@@ -315,7 +338,7 @@ def test_persisted_zero_sum_invariant_with_multiple_expenses_and_payments(temp_d
             CreateExpenseRequest(
                 title="E1",
                 amount=100.00,
-                payer_id=m1.id,
+                payers=[CreateExpensePayerInput(member_id=m1.id, amount=100.00)],
                 split_method=SplitMethod.EQUAL,
                 participants=[m1.id, m2.id, m3.id],
             ),
@@ -325,7 +348,7 @@ def test_persisted_zero_sum_invariant_with_multiple_expenses_and_payments(temp_d
             CreateExpenseRequest(
                 title="E2",
                 amount=45.00,
-                payer_id=m2.id,
+                payers=[CreateExpensePayerInput(member_id=m2.id, amount=45.00)],
                 split_method=SplitMethod.EXACT,
                 shares=[
                     {"member_id": m2.id, "owed_amount": 25.00},
@@ -336,6 +359,56 @@ def test_persisted_zero_sum_invariant_with_multiple_expenses_and_payments(temp_d
 
         bals = repo.get_net_balances(grp.id)
         assert sum(round(b.net_balance * 100) for b in bals) == 0
+
+
+def test_sqlite_multiple_payers_persistence_and_cascade(temp_db):
+    """Verify multiple payers are persisted in expense_payers table, queried correctly, and cascade deleted."""
+    TestSession, _, _ = temp_db
+    with TestSession() as session:
+        repo = SqlAlchemyRepository(session)
+        grp = repo.create_group(CreateGroupRequest(name="Multi-Payer Group", currency="INR"))
+        a = repo.add_member(grp.id, CreateMemberRequest(name="A"))
+        b = repo.add_member(grp.id, CreateMemberRequest(name="B"))
+        c = repo.add_member(grp.id, CreateMemberRequest(name="C"))
+        d = repo.add_member(grp.id, CreateMemberRequest(name="D"))
+
+        # A paid 700, B paid 300, total 1000, shared equally by A, B, C, D
+        exp = repo.create_expense(
+            grp.id,
+            CreateExpenseRequest(
+                title="Grand Dinner",
+                amount=1000.00,
+                payers=[
+                    CreateExpensePayerInput(member_id=a.id, amount=700.00),
+                    CreateExpensePayerInput(member_id=b.id, amount=300.00),
+                ],
+                split_method=SplitMethod.EQUAL,
+                participants=[a.id, b.id, c.id, d.id],
+            ),
+        )
+
+        # Verify database records
+        payer_rows = session.scalars(
+            select(ExpensePayerModel).where(ExpensePayerModel.expense_id == exp.id).order_by(ExpensePayerModel.amount_cents.desc())
+        ).all()
+        assert len(payer_rows) == 2
+        assert payer_rows[0].member_id == a.id
+        assert payer_rows[0].amount_cents == 70000
+        assert payer_rows[1].member_id == b.id
+        assert payer_rows[1].amount_cents == 30000
+
+        # Verify net balances calculated via repository
+        balances = repo.get_net_balances(grp.id)
+        bal_map = {b.member_id: b.net_balance for b in balances}
+        assert bal_map[a.id] == 450.00
+        assert bal_map[b.id] == 50.00
+        assert bal_map[c.id] == -250.00
+        assert bal_map[d.id] == -250.00
+
+        # Verify deletion cascades to expense_payers table
+        repo.delete_expense(grp.id, exp.id)
+        remaining_payers = session.scalars(select(ExpensePayerModel).where(ExpensePayerModel.expense_id == exp.id)).all()
+        assert len(remaining_payers) == 0
 
 
 def test_simulated_process_restart_persistence(temp_db):
@@ -357,3 +430,4 @@ def test_simulated_process_restart_persistence(temp_db):
         assert len(loaded_members) == 1
         assert loaded_members[0].name == "Zoe"
     restart_engine.dispose()
+

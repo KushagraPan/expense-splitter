@@ -22,13 +22,13 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Issue #4 & #5 expense management state
+  // Expense management state (Multiple Payers & Splits)
   const [showExpenseForm, setShowExpenseForm] = useState<boolean>(false);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [expandedExpenseIds, setExpandedExpenseIds] = useState<Set<string>>(new Set());
   const [expenseTitle, setExpenseTitle] = useState<string>('');
   const [expenseAmount, setExpenseAmount] = useState<string>('');
-  const [expensePayerId, setExpensePayerId] = useState<string>('');
+  const [expensePayers, setExpensePayers] = useState<{ member_id: string; amount: string }[]>([]);
   const [expenseDate, setExpenseDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [splitMethod, setSplitMethod] = useState<SplitMethod>('EQUAL');
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
@@ -42,8 +42,10 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
   const [lifecycleSuccess, setLifecycleSuccess] = useState<string | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
 
-  // Payment Recording & Settlement state
+  // Payment Recording & Settlement state (Iteration 3)
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
+  const [paymentMode, setPaymentMode] = useState<'FULL' | 'PARTIAL' | 'STANDALONE'>('FULL');
+  const [showHowItWorks, setShowHowItWorks] = useState<boolean>(false);
   const [paymentPayerId, setPaymentPayerId] = useState<string>('');
   const [paymentRecipientId, setPaymentRecipientId] = useState<string>('');
   const [paymentPayerName, setPaymentPayerName] = useState<string>('');
@@ -75,7 +77,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
           setSettlements(settlementsData);
           setPayments(paymentsData);
           if (membersData.length > 0) {
-            setExpensePayerId((prev) => prev || membersData[0].id);
+            setExpensePayers((prev) => (prev.length > 0 ? prev : [{ member_id: membersData[0].id, amount: '' }]));
             setSelectedParticipants(membersData.map((m) => m.id));
           }
           setLoading(false);
@@ -122,9 +124,13 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
       await apiService.deleteMember(groupId, memberId);
       setMembers((prev) => {
         const remaining = prev.filter((m) => m.id !== memberId);
-        if (expensePayerId === memberId && remaining.length > 0) {
-          setExpensePayerId(remaining[0].id);
-        }
+        setExpensePayers((currentPayers) => {
+          const filtered = currentPayers.filter((p) => p.member_id !== memberId);
+          if (filtered.length === 0 && remaining.length > 0) {
+            return [{ member_id: remaining[0].id, amount: '' }];
+          }
+          return filtered;
+        });
         return remaining;
       });
       setSelectedParticipants((prev) => prev.filter((id) => id !== memberId));
@@ -139,6 +145,45 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleAddPayerRow = () => {
+    const usedIds = new Set(expensePayers.map((p) => p.member_id));
+    const available = members.find((m) => !usedIds.has(m.id)) || members[0];
+    if (available) {
+      setExpensePayers((prev) => [...prev, { member_id: available.id, amount: '' }]);
+    }
+  };
+
+  const handleRemovePayerRow = (index: number) => {
+    setExpensePayers((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePayerMemberChange = (index: number, memberId: string) => {
+    setExpensePayers((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], member_id: memberId };
+      return copy;
+    });
+  };
+
+  const handlePayerAmountChange = (index: number, val: string) => {
+    setExpensePayers((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], amount: val };
+      return copy;
+    });
+  };
+
+  const handleExpenseAmountChange = (val: string) => {
+    setExpenseAmount(val);
+    setExpensePayers((prev) => {
+      if (prev.length <= 1) {
+        const memberId = prev[0]?.member_id || (members[0]?.id ?? '');
+        return [{ member_id: memberId, amount: val }];
+      }
+      return prev;
+    });
   };
 
   const toggleParticipant = (memberId: string) => {
@@ -158,7 +203,18 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     setEditingExpenseId(expense.id);
     setExpenseTitle(expense.title);
     setExpenseAmount(expense.amount.toString());
-    setExpensePayerId(expense.payer_id);
+    if (expense.payers && expense.payers.length > 0) {
+      setExpensePayers(
+        expense.payers.map((p) => ({
+          member_id: p.member_id,
+          amount: p.amount.toString(),
+        }))
+      );
+    } else {
+      setExpensePayers(
+        members.length > 0 ? [{ member_id: members[0].id, amount: expense.amount.toString() }] : []
+      );
+    }
     setExpenseDate(expense.expense_date);
     setSplitMethod(expense.split_method);
     setExpenseCategory(expense.category || '');
@@ -185,13 +241,8 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     setEditingExpenseId(null);
     setExpenseTitle('');
     setExpenseAmount('');
-    if (members.length > 0) {
-      setExpensePayerId(members[0].id);
-      setSelectedParticipants(members.map((m) => m.id));
-    } else {
-      setExpensePayerId('');
-      setSelectedParticipants([]);
-    }
+    setExpensePayers(members.length > 0 ? [{ member_id: members[0].id, amount: '' }] : []);
+    setSelectedParticipants(members.map((m) => m.id));
     setExpenseDate(new Date().toISOString().split('T')[0]);
     setSplitMethod('EQUAL');
     setExpenseCategory('');
@@ -231,9 +282,9 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     }
   };
 
-  const handleOpenPaymentModal = (suggestion: SettlementSuggestion) => {
+  const handleOpenFullPaymentModal = (suggestion: SettlementSuggestion) => {
+    setPaymentMode('FULL');
     setPaymentError(null);
-    setPaymentSuccess(null);
     setPaymentPayerId(suggestion.payer_id);
     setPaymentRecipientId(suggestion.recipient_id);
     setPaymentPayerName(suggestion.payer_name);
@@ -245,6 +296,76 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     setShowPaymentModal(true);
   };
 
+  const handleOpenPartialPaymentModal = (suggestion: SettlementSuggestion) => {
+    setPaymentMode('PARTIAL');
+    setPaymentError(null);
+    setPaymentPayerId(suggestion.payer_id);
+    setPaymentRecipientId(suggestion.recipient_id);
+    setPaymentPayerName(suggestion.payer_name);
+    setPaymentRecipientName(suggestion.recipient_name);
+    setPaymentAmount('');
+    setPaymentMaxAmount(suggestion.amount);
+    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setPaymentNotes('');
+    setShowPaymentModal(true);
+  };
+
+  const handleOpenStandalonePaymentModal = () => {
+    setPaymentMode('STANDALONE');
+    setPaymentError(null);
+    const debtorIds = Array.from(new Set(settlements.map((s) => s.payer_id)));
+    const initialPayer = debtorIds.length > 0 ? debtorIds[0] : (members[0]?.id || '');
+    const matching = settlements.filter((s) => s.payer_id === initialPayer);
+    const initialRecipient = matching.length > 0 ? matching[0].recipient_id : (members.find((m) => m.id !== initialPayer)?.id || '');
+    const initialMax = matching.length > 0 ? matching[0].amount : 0;
+
+    const pName = members.find((m) => m.id === initialPayer)?.name || initialPayer;
+    const rName = members.find((m) => m.id === initialRecipient)?.name || initialRecipient;
+
+    setPaymentPayerId(initialPayer);
+    setPaymentRecipientId(initialRecipient);
+    setPaymentPayerName(pName);
+    setPaymentRecipientName(rName);
+    setPaymentAmount('');
+    setPaymentMaxAmount(initialMax);
+    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setPaymentNotes('');
+    setShowPaymentModal(true);
+  };
+
+  const handleStandalonePayerChange = (newPayerId: string) => {
+    setPaymentPayerId(newPayerId);
+    const pName = members.find((m) => m.id === newPayerId)?.name || newPayerId;
+    setPaymentPayerName(pName);
+
+    const matching = settlements.filter((s) => s.payer_id === newPayerId);
+    if (matching.length > 0) {
+      const firstMatch = matching[0];
+      setPaymentRecipientId(firstMatch.recipient_id);
+      setPaymentRecipientName(firstMatch.recipient_name);
+      setPaymentMaxAmount(firstMatch.amount);
+    } else {
+      const other = members.find((m) => m.id !== newPayerId);
+      const otherId = other?.id || '';
+      setPaymentRecipientId(otherId);
+      setPaymentRecipientName(other?.name || otherId);
+      setPaymentMaxAmount(0);
+    }
+    setPaymentError(null);
+  };
+
+  const handleStandaloneRecipientChange = (newRecipientId: string) => {
+    setPaymentRecipientId(newRecipientId);
+    const rName = members.find((m) => m.id === newRecipientId)?.name || newRecipientId;
+    setPaymentRecipientName(rName);
+
+    const match = settlements.find(
+      (s) => s.payer_id === paymentPayerId && s.recipient_id === newRecipientId
+    );
+    setPaymentMaxAmount(match ? match.amount : 0);
+    setPaymentError(null);
+  };
+
   const handleClosePaymentModal = () => {
     setShowPaymentModal(false);
     setPaymentError(null);
@@ -253,7 +374,6 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
   const handleRecordPaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPaymentError(null);
-    setPaymentSuccess(null);
 
     const parsedAmount = parseFloat(paymentAmount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -261,8 +381,15 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
       return;
     }
 
+    if (paymentMaxAmount <= 0) {
+      setPaymentError('No outstanding settlement is currently suggested in this direction');
+      return;
+    }
+
     if (parsedAmount > paymentMaxAmount + 0.0001) {
-      setPaymentError('Payment amount exceeds currently suggested settlement amount');
+      setPaymentError(
+        `Payment amount exceeds currently suggested settlement amount of ${group?.currency} ${paymentMaxAmount.toFixed(2)}`
+      );
       return;
     }
 
@@ -286,7 +413,10 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
       setSettlements(updatedSettlements);
       setPayments(updatedPayments);
       setShowPaymentModal(false);
-      setPaymentSuccess(`Payment of ${group?.currency} ${recorded.amount.toFixed(2)} recorded successfully.`);
+
+      const pName = members.find((m) => m.id === paymentPayerId)?.name || paymentPayerId;
+      const rName = members.find((m) => m.id === paymentRecipientId)?.name || paymentRecipientId;
+      setPaymentSuccess(`${pName} paid ${rName} ${group?.currency} ${recorded.amount.toFixed(2)}.`);
     } catch (err) {
       setPaymentError(err instanceof Error ? err.message : 'Failed to record payment');
     } finally {
@@ -299,7 +429,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     setExpenseTitle('');
     setExpenseAmount('');
     if (members.length > 0) {
-      setExpensePayerId(members[0].id);
+      setExpensePayers([{ member_id: members[0].id, amount: '' }]);
       setSelectedParticipants(members.map((m) => m.id));
     }
     setExpenseDate(new Date().toISOString().split('T')[0]);
@@ -363,9 +493,52 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     setExpenseError(null);
     setExpenseSuccess(null);
 
+    const trimmedTitle = expenseTitle.trim();
+    if (!trimmedTitle) {
+      setExpenseError('Expense title cannot be empty');
+      return;
+    }
+
     const parsedAmount = parseFloat(expenseAmount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       setExpenseError('Expense amount must be greater than zero');
+      return;
+    }
+
+    if (expensePayers.length === 0) {
+      setExpenseError('At least one payer is required');
+      return;
+    }
+
+    const totalCents = Math.round(parsedAmount * 100);
+    let payerSumCents = 0;
+    const payersPayload: { member_id: string; amount: number }[] = [];
+
+    for (const p of expensePayers) {
+      const pAmt = parseFloat(p.amount);
+      if (isNaN(pAmt) || pAmt <= 0) {
+        setExpenseError('Each payer amount must be greater than zero');
+        return;
+      }
+      const pCents = Math.round(pAmt * 100);
+      payerSumCents += pCents;
+      payersPayload.push({
+        member_id: p.member_id,
+        amount: Number((pCents / 100).toFixed(2)),
+      });
+    }
+
+    if (payerSumCents !== totalCents) {
+      const diff = (totalCents - payerSumCents) / 100;
+      if (diff > 0) {
+        setExpenseError(
+          `${group?.currency} ${diff.toFixed(2)} remaining — payer amounts must add up to ${group?.currency} ${parsedAmount.toFixed(2)}.`
+        );
+      } else {
+        setExpenseError(
+          `${group?.currency} ${Math.abs(diff).toFixed(2)} too much — payer amounts must add up to ${group?.currency} ${parsedAmount.toFixed(2)}.`
+        );
+      }
       return;
     }
 
@@ -378,9 +551,9 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
       setActionLoading(true);
       if (splitMethod === 'EQUAL') {
         const payload = {
-          title: expenseTitle,
+          title: trimmedTitle,
           amount: parsedAmount,
-          payer_id: expensePayerId,
+          payers: payersPayload,
           split_method: 'EQUAL' as const,
           expense_date: expenseDate,
           category: expenseCategory.trim() || undefined,
@@ -404,14 +577,35 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
           );
         }
       } else {
-        const shares = selectedParticipants.map((id) => ({
-          member_id: id,
-          owed_amount: parseFloat(exactShares[id] || '0') || 0,
-        }));
+        let sumExactCents = 0;
+        const shares = selectedParticipants.map((id) => {
+          const sAmt = parseFloat(exactShares[id] || '0') || 0;
+          sumExactCents += Math.round(sAmt * 100);
+          return {
+            member_id: id,
+            owed_amount: Number((Math.round(sAmt * 100) / 100).toFixed(2)),
+          };
+        });
+
+        if (sumExactCents !== totalCents) {
+          const diff = (totalCents - sumExactCents) / 100;
+          if (diff > 0) {
+            setExpenseError(
+              `${group?.currency} ${diff.toFixed(2)} remaining — amounts must add up to ${group?.currency} ${parsedAmount.toFixed(2)}.`
+            );
+          } else {
+            setExpenseError(
+              `${group?.currency} ${Math.abs(diff).toFixed(2)} too much — amounts must add up to ${group?.currency} ${parsedAmount.toFixed(2)}.`
+            );
+          }
+          setActionLoading(false);
+          return;
+        }
+
         const payload = {
-          title: expenseTitle,
+          title: trimmedTitle,
           amount: parsedAmount,
-          payer_id: expensePayerId,
+          payers: payersPayload,
           split_method: 'EXACT' as const,
           expense_date: expenseDate,
           category: expenseCategory.trim() || undefined,
@@ -473,13 +667,36 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
 
   const isArchived = group.status === 'ARCHIVED';
 
-  // Calculate live preview for exact shares
+  // Calculate live preview for payers
   const numericExpenseAmount = parseFloat(expenseAmount) || 0;
+  const totalPayerAllocated = expensePayers.reduce(
+    (sum, p) => sum + (parseFloat(p.amount) || 0),
+    0
+  );
+  const payerDifference = Number((numericExpenseAmount - totalPayerAllocated).toFixed(2));
+  const isPayerBalanced =
+    Math.abs(payerDifference) <= 0.005 &&
+    numericExpenseAmount > 0 &&
+    expensePayers.length > 0 &&
+    expensePayers.every((p) => (parseFloat(p.amount) || 0) > 0);
+
+  // Calculate live preview for exact shares
   const totalExactAllocated = selectedParticipants.reduce(
     (sum, id) => sum + (parseFloat(exactShares[id] || '0') || 0),
     0
   );
   const exactDifference = Number((numericExpenseAmount - totalExactAllocated).toFixed(2));
+  const isExactBalanced =
+    Math.abs(exactDifference) <= 0.005 &&
+    numericExpenseAmount > 0 &&
+    selectedParticipants.every((id) => (parseFloat(exactShares[id] || '0') || 0) >= 0);
+
+  const isExpenseFormValid =
+    expenseTitle.trim().length > 0 &&
+    numericExpenseAmount > 0 &&
+    isPayerBalanced &&
+    selectedParticipants.length > 0 &&
+    (splitMethod === 'EQUAL' || isExactBalanced);
 
   return (
     <div className="group-detail-view">
@@ -719,10 +936,10 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
 
         {/* Expense Form (Create or Edit) */}
         {showExpenseForm && !isArchived && (
-          <form onSubmit={handleSaveExpense} className="expense-form">
+          <form onSubmit={handleSaveExpense} className="expense-form" noValidate>
             <div className="form-header-row">
               <h4 className="subsection-title">
-                {editingExpenseId ? 'Edit Expense' : 'New Expense'}
+                {editingExpenseId ? 'Edit expense' : 'Add expense'}
               </h4>
               <button
                 type="button"
@@ -733,155 +950,259 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
               </button>
             </div>
 
-            <div className="form-grid">
-              <div className="form-group">
-                <label htmlFor="expense-title" className="form-label">
-                  Title / Description *
-                </label>
-                <input
-                  id="expense-title"
-                  type="text"
-                  placeholder="e.g. Beach Shack Dinner, Fuel, Groceries"
-                  value={expenseTitle}
-                  onChange={(e) => setExpenseTitle(e.target.value)}
-                  className="form-input"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="expense-amount" className="form-label">
-                  Amount ({group.currency}) *
-                </label>
-                <div className="input-with-addon">
+            {/* 1. What did you spend on? & How much was it? */}
+            <div className="expense-form-section">
+              <div className="form-grid">
+                <div className="form-group">
+                  <label htmlFor="expense-title" className="form-label">
+                    What did you spend on? <span className="required-star">*</span>
+                  </label>
                   <input
-                    id="expense-amount"
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    placeholder="0.00"
-                    value={expenseAmount}
-                    onChange={(e) => setExpenseAmount(e.target.value)}
+                    id="expense-title"
+                    type="text"
+                    placeholder="e.g. Dinner, Fuel, Resort Booking"
+                    value={expenseTitle}
+                    onChange={(e) => setExpenseTitle(e.target.value)}
                     className="form-input"
                     required
                   />
-                  <span className="input-addon">{group.currency}</span>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="expense-amount" className="form-label">
+                    How much was it? ({group.currency}) <span className="required-star">*</span>
+                  </label>
+                  <div className="input-with-addon">
+                    <input
+                      id="expense-amount"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="0.00"
+                      value={expenseAmount}
+                      onChange={(e) => handleExpenseAmountChange(e.target.value)}
+                      className="form-input"
+                      required
+                    />
+                    <span className="input-addon">{group.currency}</span>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="expense-date" className="form-label">
+                    When? (Date) <span className="required-star">*</span>
+                  </label>
+                  <input
+                    id="expense-date"
+                    type="date"
+                    value={expenseDate}
+                    onChange={(e) => setExpenseDate(e.target.value)}
+                    className="form-input"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 2. WHO PAID? */}
+            <div className="expense-form-section payers-config-section">
+              <div className="section-heading-block">
+                <h5 className="form-section-title">WHO PAID?</h5>
+                <p className="form-section-subtitle">Add everyone who paid and how much they paid.</p>
+              </div>
+
+              <div className="payers-list-inputs">
+                {expensePayers.map((payer, idx) => (
+                  <div key={idx} className="payer-input-row">
+                    <div className="payer-select-col">
+                      <select
+                        value={payer.member_id}
+                        onChange={(e) => handlePayerMemberChange(idx, e.target.value)}
+                        className="form-select"
+                        aria-label={`Payer ${idx + 1}`}
+                      >
+                        {members.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="payer-amount-col">
+                      <div className="input-with-addon">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          placeholder="0.00"
+                          value={payer.amount}
+                          onChange={(e) => handlePayerAmountChange(idx, e.target.value)}
+                          className="form-input"
+                          aria-label={`Amount paid by payer ${idx + 1}`}
+                        />
+                        <span className="input-addon">{group.currency}</span>
+                      </div>
+                    </div>
+                    {expensePayers.length > 1 && (
+                      <button
+                        type="button"
+                        className="btn-remove-row"
+                        onClick={() => handleRemovePayerRow(idx)}
+                        aria-label={`Remove payer ${idx + 1}`}
+                        title="Remove payer"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="payer-actions-bar">
+                {expensePayers.length < members.length && (
+                  <button
+                    type="button"
+                    className="btn-ghost btn-add-payer"
+                    onClick={handleAddPayerRow}
+                  >
+                    + Add another payer
+                  </button>
+                )}
+              </div>
+
+              {/* Payer Total Live Feedback */}
+              {numericExpenseAmount > 0 && (
+                <div
+                  className={`live-feedback-box ${
+                    isPayerBalanced
+                      ? 'feedback-matched'
+                      : payerDifference > 0
+                      ? 'feedback-under'
+                      : 'feedback-over'
+                  }`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {isPayerBalanced ? (
+                    <span>
+                      ✓ Payer total: <strong>{group.currency} {totalPayerAllocated.toFixed(2)}</strong> / {group.currency} {numericExpenseAmount.toFixed(2)}
+                    </span>
+                  ) : payerDifference > 0 ? (
+                    <span>
+                      ⚠ {group.currency} {payerDifference.toFixed(2)} remaining — payer amounts must add up to {group.currency} {numericExpenseAmount.toFixed(2)}.
+                    </span>
+                  ) : (
+                    <span>
+                      ⚠ {group.currency} {Math.abs(payerDifference).toFixed(2)} too much — payer amounts must add up to {group.currency} {numericExpenseAmount.toFixed(2)}.
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 3. WHO SHARES THIS EXPENSE? */}
+            <div className="expense-form-section participants-config-section">
+              <div className="section-heading-block">
+                <div className="participants-heading-row">
+                  <div>
+                    <h5 className="form-section-title">WHO SHARES THIS EXPENSE?</h5>
+                    <p className="form-section-subtitle">Select everyone whose share should count.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-select-all"
+                    onClick={() =>
+                      setSelectedParticipants(
+                        selectedParticipants.length === members.length ? [] : members.map((m) => m.id)
+                      )
+                    }
+                  >
+                    {selectedParticipants.length === members.length ? 'Deselect All' : 'Select All'}
+                  </button>
                 </div>
               </div>
 
-              <div className="form-group">
-                <label htmlFor="expense-payer" className="form-label">
-                  Payer *
-                </label>
-                <select
-                  id="expense-payer"
-                  value={expensePayerId}
-                  onChange={(e) => setExpensePayerId(e.target.value)}
-                  className="form-select"
-                  required
-                >
-                  {members.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="expense-date" className="form-label">
-                  Date *
-                </label>
-                <input
-                  id="expense-date"
-                  type="date"
-                  value={expenseDate}
-                  onChange={(e) => setExpenseDate(e.target.value)}
-                  className="form-input"
-                  required
-                />
+              <div className="participant-checkbox-grid">
+                {members.map((m) => {
+                  const isChecked = selectedParticipants.includes(m.id);
+                  const isPayer = expensePayers.some((p) => p.member_id === m.id);
+                  return (
+                    <label
+                      key={m.id}
+                      className={`participant-checkbox-label ${isChecked ? 'checked' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleParticipant(m.id)}
+                      />
+                      <span className="participant-name">{m.name}</span>
+                      {isPayer && <span className="payer-tag">(Paid)</span>}
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Split Method Selector */}
-            <div className="split-method-section">
-              <label className="form-label">Split Method *</label>
-              <div className="radio-button-group">
-                <label className={`radio-label ${splitMethod === 'EQUAL' ? 'selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="splitMethod"
-                    value="EQUAL"
-                    checked={splitMethod === 'EQUAL'}
-                    onChange={() => setSplitMethod('EQUAL')}
-                  />
-                  <span>Equal Split</span>
-                </label>
-                <label className={`radio-label ${splitMethod === 'EXACT' ? 'selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="splitMethod"
-                    value="EXACT"
-                    checked={splitMethod === 'EXACT'}
-                    onChange={() => setSplitMethod('EXACT')}
-                  />
-                  <span>Exact Amounts</span>
-                </label>
+            {/* 4. HOW SHOULD IT BE SPLIT? */}
+            <div className="expense-form-section split-method-section">
+              <div className="section-heading-block">
+                <h5 className="form-section-title">HOW SHOULD IT BE SPLIT?</h5>
               </div>
-            </div>
 
-            {/* Participants selection */}
-            <div className="participants-section">
-              <div className="participants-header">
-                <label className="form-label">
-                  Participants ({selectedParticipants.length} selected) *
-                </label>
+              <div className="split-method-toggle">
                 <button
                   type="button"
-                  className="btn-select-all"
-                  onClick={() =>
-                    setSelectedParticipants(
-                      selectedParticipants.length === members.length ? [] : members.map((m) => m.id)
-                    )
-                  }
+                  className={`btn-split-toggle ${splitMethod === 'EQUAL' ? 'active' : ''}`}
+                  onClick={() => setSplitMethod('EQUAL')}
                 >
-                  {selectedParticipants.length === members.length ? 'Deselect All' : 'Select All'}
+                  Equal
+                </button>
+                <button
+                  type="button"
+                  className={`btn-split-toggle ${splitMethod === 'EXACT' ? 'active' : ''}`}
+                  onClick={() => setSplitMethod('EXACT')}
+                >
+                  Exact
                 </button>
               </div>
 
               {splitMethod === 'EQUAL' ? (
-                <div className="participant-checkbox-grid">
-                  {members.map((m) => {
-                    const isChecked = selectedParticipants.includes(m.id);
-                    return (
-                      <label key={m.id} className={`participant-checkbox-label ${isChecked ? 'checked' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleParticipant(m.id)}
-                        />
-                        <span className="participant-name">{m.name}</span>
-                        {m.id === expensePayerId && <span className="payer-tag">(Payer)</span>}
-                      </label>
-                    );
-                  })}
+                <div className="split-equal-content">
+                  <p className="split-method-primary-text">
+                    <strong>Everyone pays an equal share.</strong>
+                  </p>
+                  <p className="split-method-secondary-text">
+                    The total is divided evenly among the selected people. Small rounding differences are handled automatically.
+                  </p>
+
+                  {selectedParticipants.length > 0 && numericExpenseAmount > 0 && (
+                    <div className="equal-preview-badge">
+                      <span>Per person share: </span>
+                      <strong className="equal-share-amount">
+                        {group.currency} {(numericExpenseAmount / selectedParticipants.length).toFixed(2)} each
+                      </strong>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="exact-shares-list">
-                  {members.map((m) => {
-                    const isChecked = selectedParticipants.includes(m.id);
-                    return (
-                      <div key={m.id} className="exact-share-item">
-                        <label className="exact-share-label">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => toggleParticipant(m.id)}
-                          />
-                          <span>{m.name}</span>
-                          {m.id === expensePayerId && <span className="payer-tag">(Payer)</span>}
-                        </label>
-                        {isChecked && (
+                <div className="split-exact-content">
+                  <p className="split-method-primary-text">
+                    <strong>Enter the exact amount each person owes.</strong>
+                  </p>
+                  <p className="split-method-secondary-text">
+                    The amounts must add up to the total expense.
+                  </p>
+
+                  <div className="exact-shares-list">
+                    {selectedParticipants.map((pid) => {
+                      const m = members.find((mem) => mem.id === pid);
+                      if (!m) return null;
+                      return (
+                        <div key={m.id} className="exact-share-item">
+                          <label className="exact-share-label">
+                            <span>{m.name}</span>
+                          </label>
                           <div className="exact-amount-wrapper">
                             <span className="currency-prefix">{group.currency}</span>
                             <input
@@ -895,73 +1216,85 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                               aria-label={`Exact share for ${m.name}`}
                             />
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  <div className="exact-balance-indicator">
-                    <span className="balance-info">
-                      Total Allocated: <strong>{group.currency} {totalExactAllocated.toFixed(2)}</strong> / {group.currency} {numericExpenseAmount.toFixed(2)}
-                    </span>
-                    {Math.abs(exactDifference) <= 0.005 && numericExpenseAmount > 0 ? (
-                      <span className="balance-badge badge-matched">✓ Balanced</span>
-                    ) : (
-                      <span className="balance-badge badge-mismatched">
-                        Difference: {exactDifference > 0 ? `+${exactDifference.toFixed(2)}` : exactDifference.toFixed(2)}
-                      </span>
-                    )}
+                        </div>
+                      );
+                    })}
                   </div>
+
+                  {/* Exact Live Feedback */}
+                  {numericExpenseAmount > 0 && (
+                    <div
+                      className={`live-feedback-box ${
+                        isExactBalanced
+                          ? 'feedback-matched'
+                          : exactDifference > 0
+                          ? 'feedback-under'
+                          : 'feedback-over'
+                      }`}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {isExactBalanced ? (
+                        <span>✓ Shares total {group.currency} {numericExpenseAmount.toFixed(2)}</span>
+                      ) : exactDifference > 0 ? (
+                        <span>⚠ {group.currency} {exactDifference.toFixed(2)} remaining — amounts must add up to {group.currency} {numericExpenseAmount.toFixed(2)}.</span>
+                      ) : (
+                        <span>⚠ {group.currency} {Math.abs(exactDifference).toFixed(2)} too much — amounts must add up to {group.currency} {numericExpenseAmount.toFixed(2)}.</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             {/* Optional category & notes */}
-            <div className="form-grid">
-              <div className="form-group">
-                <label htmlFor="expense-category" className="form-label">
-                  Category (Optional)
-                </label>
-                <input
-                  id="expense-category"
-                  type="text"
-                  placeholder="e.g. Food, Transport, Accommodation"
-                  value={expenseCategory}
-                  onChange={(e) => setExpenseCategory(e.target.value)}
-                  className="form-input"
-                />
-              </div>
+            <div className="expense-form-section optional-meta-section">
+              <div className="form-grid">
+                <div className="form-group">
+                  <label htmlFor="expense-category" className="form-label">
+                    Category (Optional)
+                  </label>
+                  <input
+                    id="expense-category"
+                    type="text"
+                    placeholder="e.g. Food, Transport, Accommodation"
+                    value={expenseCategory}
+                    onChange={(e) => setExpenseCategory(e.target.value)}
+                    className="form-input"
+                  />
+                </div>
 
-              <div className="form-group">
-                <label htmlFor="expense-notes" className="form-label">
-                  Notes (Optional, max 255 chars)
-                </label>
-                <input
-                  id="expense-notes"
-                  type="text"
-                  placeholder="Additional context"
-                  maxLength={255}
-                  value={expenseNotes}
-                  onChange={(e) => setExpenseNotes(e.target.value)}
-                  className="form-input"
-                />
+                <div className="form-group">
+                  <label htmlFor="expense-notes" className="form-label">
+                    Notes (Optional, max 255 chars)
+                  </label>
+                  <input
+                    id="expense-notes"
+                    type="text"
+                    placeholder="Additional context"
+                    maxLength={255}
+                    value={expenseNotes}
+                    onChange={(e) => setExpenseNotes(e.target.value)}
+                    className="form-input"
+                  />
+                </div>
               </div>
             </div>
 
             <div className="form-actions">
-              <button
-                type="submit"
-                disabled={actionLoading || isArchived}
-                className="btn-primary"
-              >
-                {actionLoading ? 'Saving...' : (editingExpenseId ? 'Update Expense' : 'Save Expense')}
-              </button>
               <button
                 type="button"
                 onClick={handleCancelExpenseForm}
                 className="btn-secondary"
               >
                 Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading || isArchived || !isExpenseFormValid}
+                className="btn-primary"
+              >
+                {actionLoading ? 'Saving...' : editingExpenseId ? 'Save changes' : 'Add expense'}
               </button>
             </div>
           </form>
@@ -974,9 +1307,21 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
           ) : (
             <div className="expense-list">
               {expenses.map((exp) => {
-                const payerMember = members.find((m) => m.id === exp.payer_id);
                 const isExpanded = expandedExpenseIds.has(exp.id);
-                const isPayerParticipant = exp.shares?.some((s) => s.member_id === exp.payer_id);
+                const payerNames = exp.payers && exp.payers.length > 0
+                  ? exp.payers
+                      .map((p) => {
+                        const m = members.find((mem) => mem.id === p.member_id);
+                        return `${m ? m.name : p.member_id} (${group.currency} ${p.amount.toFixed(2)})`;
+                      })
+                      .join(', ')
+                  : '—';
+
+                // Find all members who either paid or participated in this expense
+                const involvedMemberIds = new Set<string>();
+                exp.payers?.forEach((p) => involvedMemberIds.add(p.member_id));
+                exp.shares?.forEach((s) => involvedMemberIds.add(s.member_id));
+                const involvedMembers = members.filter((m) => involvedMemberIds.has(m.id));
 
                 return (
                   <div key={exp.id} className="expense-card">
@@ -987,7 +1332,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                           <span className="expense-date">{exp.expense_date}</span>
                           <span className="meta-separator">•</span>
                           <span className="expense-payer">
-                            Paid by <strong>{payerMember ? payerMember.name : exp.payer_id}</strong>
+                            Paid by <strong>{payerNames}</strong>
                           </span>
                           {exp.category && (
                             <>
@@ -1050,33 +1395,79 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                           </div>
                         )}
 
-                        <div className="expense-shares-section">
-                          <h5 className="shares-breakdown-title">
-                            Participant Shares ({exp.shares?.length || 0})
-                          </h5>
-                          <ul className="shares-detail-list">
-                            {exp.shares?.map((share) => {
-                              const participant = members.find((m) => m.id === share.member_id);
-                              const isPayer = share.member_id === exp.payer_id;
+                        <div className="expense-details-grid">
+                          {/* Paid by section */}
+                          <div className="expense-payers-section">
+                            <h5 className="payers-breakdown-title">
+                              Paid by ({exp.payers?.length || 0})
+                            </h5>
+                            <ul className="payers-detail-list">
+                              {exp.payers?.map((payer) => {
+                                const m = members.find((mem) => mem.id === payer.member_id);
+                                return (
+                                  <li key={payer.member_id} className="payer-detail-item">
+                                    <span className="payer-member-name">
+                                      {m ? m.name : payer.member_id}
+                                    </span>
+                                    <span className="payer-paid-amount">
+                                      paid {group.currency} {payer.amount.toFixed(2)}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                            <div className="payers-total-summary">
+                              Total paid: <strong>{group.currency} {exp.amount.toFixed(2)}</strong>
+                            </div>
+                          </div>
+
+                          {/* Shared by section */}
+                          <div className="expense-shares-section">
+                            <h5 className="shares-breakdown-title">
+                              Shared by ({exp.shares?.length || 0})
+                            </h5>
+                            <ul className="shares-detail-list">
+                              {exp.shares?.map((share) => {
+                                const participant = members.find((m) => m.id === share.member_id);
+                                return (
+                                  <li key={share.member_id} className="share-detail-item">
+                                    <span className="share-member-name">
+                                      {participant ? participant.name : share.member_id}
+                                    </span>
+                                    <span className="share-owed-amount">
+                                      owes {group.currency} {share.owed_amount.toFixed(2)}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                            <div className="shares-total-summary">
+                              Total shared: <strong>{group.currency} {exp.amount.toFixed(2)}</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Net balance interpretation for this expense */}
+                        <div className="expense-impact-section">
+                          <h5 className="impact-breakdown-title">Resulting Contribution for this Expense</h5>
+                          <div className="impact-grid">
+                            {involvedMembers.map((m) => {
+                              const paid = exp.payers?.find((p) => p.member_id === m.id)?.amount || 0;
+                              const owed = exp.shares?.find((s) => s.member_id === m.id)?.owed_amount || 0;
+                              const net = Math.round((paid - owed) * 100) / 100;
                               return (
-                                <li key={share.member_id} className="share-detail-item">
-                                  <span className="share-member-name">
-                                    {participant ? participant.name : share.member_id}
-                                    {isPayer && <span className="payer-tag"> (Payer)</span>}
+                                <div key={m.id} className="impact-card">
+                                  <span className="impact-name">{m.name}</span>
+                                  <span className="impact-details">
+                                    paid {group.currency} {paid.toFixed(2)}, owes {group.currency} {owed.toFixed(2)}
                                   </span>
-                                  <span className="share-owed-amount">
-                                    {group.currency} {share.owed_amount.toFixed(2)}
+                                  <span className={`impact-badge ${net > 0 ? 'impact-credit' : net < 0 ? 'impact-debt' : 'impact-zero'}`}>
+                                    {net > 0 ? `+${group.currency} ${net.toFixed(2)}` : net < 0 ? `-${group.currency} ${Math.abs(net).toFixed(2)}` : `${group.currency} 0.00`}
                                   </span>
-                                </li>
+                                </div>
                               );
                             })}
-                          </ul>
-
-                          {!isPayerParticipant && (
-                            <p className="payer-excluded-note">
-                              ℹ Payer ({payerMember ? payerMember.name : exp.payer_id}) is excluded from participants and owes {group.currency} 0.00.
-                            </p>
-                          )}
+                          </div>
                         </div>
 
                         <div className="expense-timestamp-meta">
@@ -1156,52 +1547,110 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         )}
       </section>
 
-      {/* Settlement Suggestions Section (Issue #7) */}
-      <section className="card">
+      {/* Settle up Section (Iteration 3) */}
+      <section className="card settle-up-section">
         <div className="section-header">
-          <h3 className="card-title">Settlement Suggestions</h3>
+          <div className="section-title-group">
+            <h3 className="card-title">Settle up</h3>
+            <p className="section-subtitle">
+              Suggested payments to efficiently clear the current balances.
+            </p>
+          </div>
+          <div className="section-actions-group">
+            <button
+              type="button"
+              className="btn-info-toggle"
+              onClick={() => setShowHowItWorks((prev) => !prev)}
+              aria-expanded={showHowItWorks}
+            >
+              {showHowItWorks ? 'Hide explanation ▴' : 'How this works ▾'}
+            </button>
+            {!isArchived && settlements.length > 0 && (
+              <button
+                type="button"
+                className="btn-secondary btn-record-standalone"
+                onClick={handleOpenStandalonePaymentModal}
+              >
+                Record a payment
+              </button>
+            )}
+          </div>
         </div>
+
+        {showHowItWorks && (
+          <div className="how-it-works-box">
+            <div className="how-it-works-header">
+              <span className="how-it-works-icon">💡</span>
+              <strong>How settlements work</strong>
+            </div>
+            <p>
+              Settlement suggestions are calculated recommendations for clearing the current balances efficiently. You can pay the suggested amount or make a partial payment. Every payment updates balances and recalculates the remaining suggestions.
+            </p>
+          </div>
+        )}
 
         {members.length === 0 ? (
           <p className="empty-state-text">No members in this group yet.</p>
         ) : settlements.length === 0 ? (
-          <div className="settled-state-box">
-            <span className="settled-icon">✓</span>
-            <div className="settled-text-group">
-              <span className="settled-title">All settled</span>
-              <span className="settled-subtitle">No outstanding debts in this group.</span>
+          <div className="all-settled-card">
+            <span className="all-settled-icon">🎉</span>
+            <div className="all-settled-content">
+              <h4 className="all-settled-title">All settled</h4>
+              <p className="all-settled-description">
+                No outstanding balances in this group. Everyone is squared away!
+              </p>
             </div>
           </div>
         ) : (
-          <div className="settlement-container">
-            <div className="settlement-list">
-              {settlements.map((s, idx) => (
-                <div key={`${s.payer_id}-${s.recipient_id}-${idx}`} className="settlement-item">
-                  <div className="settlement-flow">
-                    <span className="settlement-participant settlement-payer">{s.payer_name}</span>
-                    <span className="settlement-arrow">pays</span>
-                    <span className="settlement-participant settlement-recipient">{s.recipient_name}</span>
+          <div className="settlement-grid">
+            {settlements.map((s, idx) => (
+              <div key={`${s.payer_id}-${s.recipient_id}-${idx}`} className="settlement-card">
+                <div className="settlement-card-flow">
+                  <div className="participant-chip payer-chip">
+                    <span className="member-avatar">
+                      {s.payer_name.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="participant-name">{s.payer_name}</span>
                   </div>
-                  <div className="settlement-actions-group">
-                    <div className="settlement-amount-badge">
-                      <span className="settlement-amount">
-                        {group.currency} {s.amount.toFixed(2)}
-                      </span>
-                    </div>
-                    {!isArchived && (
-                      <button
-                        type="button"
-                        className="btn-record-payment btn-sm"
-                        onClick={() => handleOpenPaymentModal(s)}
-                        title={`Record payment from ${s.payer_name} to ${s.recipient_name}`}
-                      >
-                        Record Payment
-                      </button>
-                    )}
+                  <div className="flow-indicator">
+                    <span className="flow-text">pays</span>
+                    <span className="flow-arrow">➔</span>
+                  </div>
+                  <div className="participant-chip recipient-chip">
+                    <span className="member-avatar">
+                      {s.recipient_name.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="participant-name">{s.recipient_name}</span>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                <div className="settlement-card-amount">
+                  <span className="amount-label">Suggested payment</span>
+                  <span className="amount-value">
+                    {group.currency} {s.amount.toFixed(2)}
+                  </span>
+                </div>
+
+                {!isArchived && (
+                  <div className="settlement-card-actions">
+                    <button
+                      type="button"
+                      className="btn-primary btn-pay-full"
+                      onClick={() => handleOpenFullPaymentModal(s)}
+                    >
+                      Pay {group.currency} {s.amount.toFixed(2)}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary btn-pay-partial"
+                      onClick={() => handleOpenPartialPaymentModal(s)}
+                    >
+                      Pay another amount
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </section>
@@ -1209,7 +1658,12 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
       {/* Payment History Section */}
       <section className="card">
         <div className="section-header">
-          <h3 className="card-title">Payment History ({payments.length})</h3>
+          <div className="section-title-group">
+            <h3 className="card-title">Payment History ({payments.length})</h3>
+            <p className="section-subtitle">
+              Recorded payments are historical records and cannot be edited or deleted.
+            </p>
+          </div>
         </div>
 
         {payments.length === 0 ? (
@@ -1245,7 +1699,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                       <span className="payment-amount-value">
                         {group.currency} {p.amount.toFixed(2)}
                       </span>
-                      <span className="badge badge-settled">Paid</span>
+                      <span className="badge badge-settled">Recorded</span>
                     </div>
                   </div>
                 );
@@ -1260,7 +1714,13 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         <div className="modal-backdrop" onClick={handleClosePaymentModal}>
           <div className="modal-content payment-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Record Settlement Payment</h3>
+              <h3 className="modal-title">
+                {paymentMode === 'FULL'
+                  ? 'Record Full Payment'
+                  : paymentMode === 'PARTIAL'
+                  ? 'Record Partial Payment'
+                  : 'Record a Payment'}
+              </h3>
               <button
                 type="button"
                 className="btn-close-modal"
@@ -1279,38 +1739,149 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
             )}
 
             <form onSubmit={handleRecordPaymentSubmit} className="payment-form">
-              <div className="payment-parties-card">
-                <div className="party-column payer-col">
-                  <span className="party-label">Payer (Debtor)</span>
-                  <strong className="party-name">{paymentPayerName}</strong>
-                </div>
-                <div className="party-arrow-indicator">➔</div>
-                <div className="party-column recipient-col">
-                  <span className="party-label">Recipient (Creditor)</span>
-                  <strong className="party-name">{paymentRecipientName}</strong>
-                </div>
-              </div>
+              {paymentMode === 'STANDALONE' ? (
+                <div className="payment-standalone-selectors">
+                  <div className="form-group">
+                    <label htmlFor="standalone-payer-select" className="form-label">
+                      Who is paying? (Debtor) *
+                    </label>
+                    <select
+                      id="standalone-payer-select"
+                      className="form-select"
+                      value={paymentPayerId}
+                      onChange={(e) => handleStandalonePayerChange(e.target.value)}
+                    >
+                      {members.map((m) => {
+                        const isDebtor = settlements.some((s) => s.payer_id === m.id);
+                        return (
+                          <option key={m.id} value={m.id}>
+                            {m.name} {isDebtor ? '(Has unsettled debt)' : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
 
-              <div className="form-group">
-                <label htmlFor="payment-amount-input" className="form-label">
-                  Payment Amount ({group.currency}) *
-                </label>
-                <input
-                  id="payment-amount-input"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  max={paymentMaxAmount}
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  className="form-input"
-                  required
-                  autoFocus
-                />
-                <small className="form-hint">
-                  Suggested: {group.currency} {paymentMaxAmount.toFixed(2)}. Partial payments permitted up to this amount.
-                </small>
-              </div>
+                  <div className="form-group">
+                    <label htmlFor="standalone-recipient-select" className="form-label">
+                      Paying to whom? (Creditor) *
+                    </label>
+                    <select
+                      id="standalone-recipient-select"
+                      className="form-select"
+                      value={paymentRecipientId}
+                      onChange={(e) => handleStandaloneRecipientChange(e.target.value)}
+                    >
+                      {members
+                        .filter((m) => m.id !== paymentPayerId)
+                        .map((m) => {
+                          const matchingSettlement = settlements.find(
+                            (s) => s.payer_id === paymentPayerId && s.recipient_id === m.id
+                          );
+                          return (
+                            <option key={m.id} value={m.id}>
+                              {m.name}{' '}
+                              {matchingSettlement
+                                ? `(Suggested: ${group.currency} ${matchingSettlement.amount.toFixed(2)})`
+                                : ''}
+                            </option>
+                          );
+                        })}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="payment-parties-card">
+                  <div className="party-column payer-col">
+                    <span className="party-label">Payer (Debtor)</span>
+                    <strong className="party-name">{paymentPayerName}</strong>
+                  </div>
+                  <div className="party-arrow-indicator">➔</div>
+                  <div className="party-column recipient-col">
+                    <span className="party-label">Recipient (Creditor)</span>
+                    <strong className="party-name">{paymentRecipientName}</strong>
+                  </div>
+                </div>
+              )}
+
+              {paymentMode === 'FULL' ? (
+                <div className="form-group">
+                  <div className="form-label-row">
+                    <label htmlFor="payment-amount-input" className="form-label">
+                      Payment Amount ({group.currency})
+                    </label>
+                    <span className="badge badge-full-settlement">Full settlement</span>
+                  </div>
+                  <input
+                    id="payment-amount-input"
+                    type="number"
+                    step="0.01"
+                    value={paymentAmount}
+                    readOnly
+                    className="form-input form-input-readonly"
+                  />
+                  <small className="form-hint">
+                    This will completely settle the suggested balance of {group.currency} {paymentMaxAmount.toFixed(2)}.
+                  </small>
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label htmlFor="payment-amount-input" className="form-label">
+                    Payment Amount ({group.currency}) *
+                  </label>
+                  <input
+                    id="payment-amount-input"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max={paymentMaxAmount > 0 ? paymentMaxAmount : undefined}
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    className="form-input"
+                    placeholder={`Up to ${group.currency} ${paymentMaxAmount.toFixed(2)}`}
+                    required
+                    autoFocus
+                  />
+                  {(() => {
+                    const parsed = parseFloat(paymentAmount) || 0;
+                    const remaining = Math.round((paymentMaxAmount - parsed) * 100) / 100;
+
+                    if (paymentMaxAmount <= 0) {
+                      return (
+                        <div className="payment-live-calc-box calc-error">
+                          <span>⚠ No outstanding settlement is currently suggested between {paymentPayerName} and {paymentRecipientName}.</span>
+                        </div>
+                      );
+                    }
+                    if (parsed <= 0) {
+                      return (
+                        <div className="payment-live-calc-box calc-neutral">
+                          <span>Suggested maximum: <strong>{group.currency} {paymentMaxAmount.toFixed(2)}</strong>. Enter an amount.</span>
+                        </div>
+                      );
+                    }
+                    if (remaining < -0.005) {
+                      return (
+                        <div className="payment-live-calc-box calc-error">
+                          <span>⚠ <strong>{group.currency} {Math.abs(remaining).toFixed(2)}</strong> too much — maximum payment is <strong>{group.currency} {paymentMaxAmount.toFixed(2)}</strong></span>
+                        </div>
+                      );
+                    }
+                    if (Math.abs(remaining) < 0.005) {
+                      return (
+                        <div className="payment-live-calc-box calc-full">
+                          <span>✓ <strong>Full settlement</strong> — will completely clear the debt between {paymentPayerName} and {paymentRecipientName}.</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="payment-live-calc-box calc-partial">
+                        <span>ℹ <strong>{group.currency} {remaining.toFixed(2)}</strong> remaining after this payment.</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
               <div className="form-group">
                 <label htmlFor="payment-date-input" className="form-label">
@@ -1345,7 +1916,12 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                 <button
                   type="submit"
                   className="btn-primary"
-                  disabled={paymentLoading}
+                  disabled={
+                    paymentLoading ||
+                    (parseFloat(paymentAmount) || 0) <= 0 ||
+                    paymentMaxAmount <= 0 ||
+                    paymentMaxAmount - (parseFloat(paymentAmount) || 0) < -0.005
+                  }
                 >
                   {paymentLoading ? 'Recording...' : 'Confirm Payment'}
                 </button>

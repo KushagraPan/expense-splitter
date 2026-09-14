@@ -43,6 +43,19 @@ class CreateMemberRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, description="Name of the member to add")
 
 
+class ExpensePayer(BaseModel):
+    expense_id: str = Field(..., description="Identifier of the associated expense")
+    member_id: str = Field(..., description="Identifier of the member who paid")
+    amount: float = Field(..., gt=0, description="Monetary amount paid by this member")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CreateExpensePayerInput(BaseModel):
+    member_id: str = Field(..., description="Identifier of the paying group member")
+    amount: float = Field(..., gt=0, description="Amount paid by this member")
+
+
 class ExpenseShare(BaseModel):
     expense_id: str = Field(..., description="Identifier of the associated expense")
     member_id: str = Field(..., description="Identifier of the member who owes this share")
@@ -61,7 +74,7 @@ class Expense(BaseModel):
     group_id: str = Field(..., description="Identifier of the group")
     title: str = Field(..., min_length=1, max_length=100, description="Title of the expense")
     amount: float = Field(..., gt=0, description="Total expense amount")
-    payer_id: str = Field(..., description="Member ID of the person who paid")
+    payers: list[ExpensePayer] = Field(default_factory=list, description="Breakdown of member contributions who paid for this expense")
     split_method: SplitMethod = Field(..., description="Split method used")
     expense_date: str = Field(..., description="Date when expense occurred (YYYY-MM-DD)")
     category: str | None = Field(default=None, max_length=50, description="Optional category")
@@ -76,7 +89,7 @@ class Expense(BaseModel):
 class CreateExpenseRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     amount: float = Field(..., gt=0)
-    payer_id: str = Field(...)
+    payers: list[CreateExpensePayerInput] = Field(..., min_length=1)
     split_method: SplitMethod = Field(...)
     expense_date: str | None = Field(default=None)
     category: str | None = Field(default=None, max_length=50)
@@ -88,7 +101,7 @@ class CreateExpenseRequest(BaseModel):
 class UpdateExpenseRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     amount: float = Field(..., gt=0)
-    payer_id: str = Field(...)
+    payers: list[CreateExpensePayerInput] = Field(..., min_length=1)
     split_method: SplitMethod = Field(...)
     expense_date: str | None = Field(default=None)
     category: str | None = Field(default=None, max_length=50)
