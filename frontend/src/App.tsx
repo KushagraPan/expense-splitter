@@ -14,6 +14,7 @@ function getGroupIdFromHash(): string | null {
 
 export function App() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(() => getGroupIdFromHash());
+  const [isCreatingGroup, setIsCreatingGroup] = useState<boolean>(false);
 
   // Synchronize browser URL hash with selected group ID
   useEffect(() => {
@@ -30,6 +31,7 @@ export function App() {
   function handleSelectGroup(id: string) {
     window.location.hash = `#group-${id}`;
     setSelectedGroupId(id);
+    setIsCreatingGroup(false);
   }
 
   function handleBackToDashboard() {
@@ -56,28 +58,40 @@ export function App() {
             aria-label="Expense Splitter - Return to Your Groups"
           >
             <div className="brand-icon" aria-hidden="true">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="4" width="20" height="16" rx="3" />
-                <line x1="2" y1="10" x2="22" y2="10" />
-                <path d="M6 15h2" />
-                <path d="M14 15h4" />
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="8.5" cy="12" r="5.5" />
+                <circle cx="15.5" cy="12" r="5.5" />
+                <path d="M12 8v8" />
               </svg>
             </div>
             <div className="brand-text">
-              <h1 className="app-title">Expense Splitter</h1>
-              <p className="app-subtitle">Split expenses. See who owes whom. Settle up.</p>
+              <span className="brand-wordmark">Expense Splitter</span>
+              <span className="brand-tagline">Shared expenses, settled easily</span>
             </div>
           </div>
-          {selectedGroupId && (
-            <button
-              type="button"
-              className="btn-ghost nav-back-btn"
-              onClick={handleBackToDashboard}
-              aria-label="Back to all groups"
-            >
-              ← All groups
-            </button>
-          )}
+
+          <div className="header-actions">
+            {selectedGroupId ? (
+              <button
+                type="button"
+                className="btn-secondary nav-back-btn"
+                onClick={handleBackToDashboard}
+                aria-label="Back to all groups"
+              >
+                ← All groups
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-primary header-new-group-btn"
+                onClick={() => setIsCreatingGroup(true)}
+                aria-label="Create a new group"
+              >
+                <span className="btn-icon" aria-hidden="true">+</span>
+                <span className="btn-text">New group</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -88,7 +102,11 @@ export function App() {
             onBack={handleBackToDashboard}
           />
         ) : (
-          <GroupDashboard onSelectGroup={handleSelectGroup} />
+          <GroupDashboard
+            isCreating={isCreatingGroup}
+            onToggleCreating={setIsCreatingGroup}
+            onSelectGroup={handleSelectGroup}
+          />
         )}
       </main>
 

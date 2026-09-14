@@ -2,9 +2,25 @@ import { useEffect, useState } from 'react';
 import { apiService } from '../services/api';
 import type { Group, Member, SplitMethod, Expense, NetBalance, SettlementSuggestion, Payment } from '../types';
 
+import { getAvatarBackground } from '../utils/avatar';
+
 interface GroupDetailProps {
   groupId: string;
   onBack: () => void;
+}
+
+function formatDisplayDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return dateStr;
+  }
 }
 
 export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
@@ -828,7 +844,10 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
             {members.map((member) => (
               <li key={member.id} className="member-item">
                 <div className="member-info">
-                  <span className="member-avatar">
+                  <span
+                    className="member-avatar"
+                    style={{ background: getAvatarBackground(member.name) }}
+                  >
                     {member.name.charAt(0).toUpperCase()}
                   </span>
                   <span className="member-name">{member.name}</span>
@@ -1518,7 +1537,10 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                 return (
                   <div key={b.member_id} className="balance-item">
                     <div className="balance-member-info">
-                      <span className="member-avatar">
+                      <span
+                        className="member-avatar"
+                        style={{ background: getAvatarBackground(b.member_name) }}
+                      >
                         {b.member_name.charAt(0).toUpperCase()}
                       </span>
                       <div className="balance-name-group">
@@ -1607,7 +1629,10 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
               <div key={`${s.payer_id}-${s.recipient_id}-${idx}`} className="settlement-card">
                 <div className="settlement-card-flow">
                   <div className="participant-chip payer-chip">
-                    <span className="member-avatar">
+                    <span
+                      className="member-avatar"
+                      style={{ background: getAvatarBackground(s.payer_name) }}
+                    >
                       {s.payer_name.charAt(0).toUpperCase()}
                     </span>
                     <span className="participant-name">{s.payer_name}</span>
@@ -1617,7 +1642,10 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                     <span className="flow-arrow">➔</span>
                   </div>
                   <div className="participant-chip recipient-chip">
-                    <span className="member-avatar">
+                    <span
+                      className="member-avatar"
+                      style={{ background: getAvatarBackground(s.recipient_name) }}
+                    >
                       {s.recipient_name.charAt(0).toUpperCase()}
                     </span>
                     <span className="participant-name">{s.recipient_name}</span>
@@ -1679,27 +1707,52 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
 
                 return (
                   <div key={p.id} className="payment-history-item">
-                    <div className="payment-history-info">
-                      <div className="payment-flow">
-                        <span className="payment-participant payment-payer">{payerName}</span>
-                        <span className="payment-arrow">paid</span>
-                        <span className="payment-participant payment-recipient">{recipientName}</span>
+                    {/* Primary Context: Who paid whom */}
+                    <div className="payment-flow">
+                      <div className="payment-participant payment-payer">
+                        <span
+                          className="member-avatar payment-avatar"
+                          style={{ background: getAvatarBackground(payerName) }}
+                          aria-hidden="true"
+                        >
+                          {payerName.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="participant-name">{payerName}</span>
                       </div>
+                      <div className="payment-flow-direction" aria-label="paid to">
+                        <span className="payment-flow-arrow" aria-hidden="true">➔</span>
+                      </div>
+                      <div className="payment-participant payment-recipient">
+                        <span
+                          className="member-avatar payment-avatar"
+                          style={{ background: getAvatarBackground(recipientName) }}
+                          aria-hidden="true"
+                        >
+                          {recipientName.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="participant-name">{recipientName}</span>
+                      </div>
+                    </div>
+
+                    {/* Prominent Financial Amount */}
+                    <div className="payment-amount-block">
+                      <span className="payment-amount-value">
+                        {group.currency} {p.amount.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {/* Secondary Meta & Recorded Status */}
+                    <div className="payment-meta-footer">
                       <div className="payment-meta-row">
-                        <span className="payment-date">{p.payment_date}</span>
+                        <span className="payment-date">{formatDisplayDate(p.payment_date)}</span>
                         {p.notes && (
                           <>
-                            <span className="meta-separator">•</span>
+                            <span className="meta-separator" aria-hidden="true">•</span>
                             <span className="payment-notes-text">{p.notes}</span>
                           </>
                         )}
                       </div>
-                    </div>
-                    <div className="payment-amount-container">
-                      <span className="payment-amount-value">
-                        {group.currency} {p.amount.toFixed(2)}
-                      </span>
-                      <span className="badge badge-settled">Recorded</span>
+                      <span className="badge badge-settled payment-status-badge">Recorded</span>
                     </div>
                   </div>
                 );
